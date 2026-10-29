@@ -200,7 +200,7 @@ table.log td.mono{font-family:var(--mono)}
 
 <div class="scrim" id="scrimSecure"><div class="sheet">
   <div class="sheet-head"><div><h2>Securing the scene</h2>
-    <div class="sub">Four decisions before entry · each is checked before you proceed</div></div></div>
+    <div class="sub">Four decisions before entry · recorded as part of your scene record</div></div></div>
   <div class="sheet-body" id="secureBody"></div>
   <div class="sheet-foot"><button class="btn go" id="secureSubmit">Commit these decisions</button></div>
 </div></div>
@@ -231,6 +231,7 @@ table.log td.mono{font-family:var(--mono)}
   <div class="sheet-head"><div><h2>Scene documentation record — case 26-0417</h2><div class="sub" id="repSub"></div></div></div>
   <div class="sheet-body" id="repBody"></div>
   <div class="sheet-foot"><button class="btn" id="repCopy">Copy log as text</button>
+    <button class="btn" id="repSheet">Download contact sheet</button>
     <button class="btn go" id="repCsv">Download log (CSV)</button></div>
 </div></div>
 
@@ -238,7 +239,7 @@ table.log td.mono{font-family:var(--mono)}
 <script>
 (function(){
 "use strict";
-const BUILD = "build 6";
+const BUILD = "build 7";
 
 /* ══════════════════════════════════════════════════════════
    CASE DATA — a new case is a new copy of this block.
@@ -378,16 +379,16 @@ const EVIDENCE_KEYS = Object.keys(CASE.items).filter(k=>CASE.items[k].kind==="ev
    ══════════════════════════════════════════════════════════ */
 const S = {
   phase:"brief", observed:new Set(), ev:{}, ov:{}, flags:[],
-  secureTries:[], obliqueOn:false, markerMode:false,
+  secureAns:[], obliqueOn:false, markerMode:false,
   nextMarker:1, markers:[], strays:0, contam:[],
   quality:"high", tech:"", partner:"", conc:null, picks:[], score:null
 };
 EVIDENCE_KEYS.forEach(k=>{ S.ev[k]={shots:{}, rejects:[], lastReject:null, marker:null}; });
 CASE.overalls.forEach(o=>{ S.ov[o.id]={img:null, t:null, rejects:[], lastReject:null}; });
-CASE.securing.forEach(()=>S.secureTries.push([]));
+CASE.securing.forEach(()=>S.secureAns.push(null));
 
 const Q = new URLSearchParams(location.search);
-const HINTS = Q.has("hints"), DEBUG = Q.has("debug");
+const HINTS = Q.has("hints"), DEBUG = Q.has("debug"), REVIEW = Q.has("review");
 
 /* ══════════════════════════════════════════════════════════
    RENDERER
@@ -1073,25 +1074,19 @@ function renderRail(){
 /* ── securing sheet ── */
 function drawSecure(){
   let h='<div id="namebar"><input id="techName" placeholder="Your name" value="'+S.tech+'">'+
-        '<input id="techPartner" placeholder="Partner name (optional)" value="'+S.partner+'"></div>';
+        '<input id="techPartner" placeholder="Partner name (optional)" value="'+S.partner+'"></div>'+
+        '<div class="mkbar">These four decisions are recorded as part of your scene record. '+
+        'You will not be told whether a choice was right — make the call you would defend, and move on.</div>';
   CASE.securing.forEach((q,i)=>{
-    const tries=S.secureTries[i], solved=tries.some(t=>t.ok);
-    h+='<div class="qblock"><h3>'+(i+1)+'. '+q.q+'</h3><p class="situ">'+q.situ+'</p>';
-    const lastBad=tries.length&&!tries[tries.length-1].ok?tries[tries.length-1]:null;
-    if(lastBad&&!solved) h+='<div class="reject"><div class="rhead">Not that one</div>'+
-      '<div class="rbody" style="display:block"><p>'+q.opts[lastBad.i].why+'</p></div></div>';
-    if(solved){ const ci=q.opts.findIndex(o=>o.ok);
-      h+='<div class="okbar">'+q.opts[ci].t+'</div>'; }
-    else { h+='<div class="opts">';
-      q.opts.forEach((o,j)=>{ const bad=tries.some(t=>t.i===j&&!t.ok);
-        h+='<label'+(bad?' class="tried"':'')+'><input type="radio" name="q'+i+'" value="'+j+'"'+
-           (bad?' disabled':'')+'><span>'+o.t+(bad?' <em>— rejected</em>':'')+'</span></label>'; });
-      h+='</div>'; }
-    h+='</div>';
+    h+='<div class="qblock"><h3>'+(i+1)+'. '+q.q+'</h3><p class="situ">'+q.situ+'</p><div class="opts">';
+    q.opts.forEach((o,j)=>{
+      h+='<label><input type="radio" name="q'+i+'" value="'+j+'"'+
+         (S.secureAns[i]===j?' checked':'')+'><span>'+o.t+'</span></label>';
+    });
+    h+='</div></div>';
   });
   $("#secureBody").innerHTML=h;
-  $("#secureSubmit").textContent = CASE.securing.every((q,i)=>S.secureTries[i].some(t=>t.ok))
-    ? "Enter the scene" : "Commit these decisions";
+  $("#secureSubmit").textContent="Commit these decisions and enter the scene";
 }
 
 /* ── note sheet ── */
@@ -1184,11 +1179,7 @@ function buildReport(){
   S.conc=conc?+conc.value:null; S.picks=picks;
 
   const sc={secure:0, ov:0, mark:0, photo:0};
-  S.secureTries.forEach(tries=>{
-    if(!tries.some(t=>t.ok)) return;
-    const wrong=tries.filter(t=>!t.ok).length;
-    sc.secure += wrong===0?5:(wrong===1?3:1);
-  });
+  S.secureAns.forEach((a,i)=>{ if(a!==null && CASE.securing[i].opts[a].ok) sc.secure+=5; });
   CASE.overalls.forEach(o=>{ const r=S.ov[o.id]; if(r.img) sc.ov+=Math.max(0,5-r.rejects.length); });
   EVIDENCE_KEYS.forEach(k=>{ const e=S.ev[k];
     if(e.marker!==null) sc.mark+=5;
@@ -1205,6 +1196,8 @@ function buildReport(){
   sc.total=Math.max(0, sc.secure+sc.ov+sc.mark+sc.photo+sc.find+sc.conc+sc.contam);
   sc.pct=Math.round(sc.total/sc.max*100);
   S.score=sc;
+
+  if(!REVIEW){ renderConfirmation(); return; }
 
   let h='<div class="scoregrid">'+
     '<div>Securing the scene</div><div class="v">'+sc.secure+' / '+maxSecure+'</div>'+
@@ -1231,6 +1224,16 @@ function buildReport(){
          (e.rejects.length?e.rejects.map(r=>r.kind+": "+r.why).join('<br>'):'—')+'</td></tr>'; });
   h+='</tbody></table>';
 
+  h+='<div class="step"><h3>Securing decisions</h3>';
+  CASE.securing.forEach((q,i)=>{
+    const a=S.secureAns[i], ok=a!==null&&q.opts[a].ok;
+    h+='<p style="margin:0 0 .3rem"><b>'+(i+1)+'. '+q.q+'</b></p>'+
+       '<div class="'+(ok?'okbar':'reject')+'" style="padding:.55rem .7rem;font-size:.82rem;line-height:1.5">'+
+       (a===null?'No answer recorded.':q.opts[a].t)+
+       (ok?'':'<br><br><i>'+(a===null?'':q.opts[a].why)+'</i>')+'</div>';
+  });
+  h+='</div>';
+
   const over=S.markers.filter(m=>!m.item&&m.near);
   if(over.length||S.strays) h+='<div class="step"><h3>Marker placement</h3><div class="warnbar">'+
     (S.strays?S.strays+' marker'+(S.strays>1?'s':'')+' placed with no feature within reach. Stray markers in a scene photograph are a gift to the defence.<br>':'')+
@@ -1254,8 +1257,107 @@ function buildReport(){
   $("#repSub").textContent=S.tech+(S.partner?" with "+S.partner:"")+" · scene released "+stamp();
   openScrim("#scrimReport");
 }
+/* Student-facing end screen: confirms the record is complete, grades nothing. */
+function renderConfirmation(){
+  const ovDone=CASE.overalls.filter(o=>S.ov[o.id].img).length;
+  const marked=EVIDENCE_KEYS.filter(k=>S.ev[k].marker!==null).length;
+  const frames=photoList().length;
+  const missing=[];
+  if(ovDone<CASE.overalls.length) missing.push((CASE.overalls.length-ovDone)+" overall photograph"+(CASE.overalls.length-ovDone>1?"s":""));
+  EVIDENCE_KEYS.forEach(k=>{ const e=S.ev[k];
+    if(e.marker===null) missing.push(CASE.items[k].id+" was never marked");
+    else { if(!e.shots.mid) missing.push(CASE.items[k].id+" has no midrange");
+           if(!e.shots.close) missing.push(CASE.items[k].id+" has no close-up"); } });
+
+  let h='<div class="okbar"><b>Scene released at '+stamp()+'.</b> Your record has been compiled. '+
+        'It has not been graded here — download both files below and submit them.</div>';
+  h+='<div class="scoregrid">'+
+     '<div>Overall photographs</div><div class="v">'+ovDone+' / '+CASE.overalls.length+'</div>'+
+     '<div>Items marked</div><div class="v">'+marked+' / '+EVIDENCE_KEYS.length+'</div>'+
+     '<div>Photographs in record</div><div class="v">'+frames+'</div>'+
+     '<div>Securing decisions recorded</div><div class="v">'+S.secureAns.filter(a=>a!==null).length+' / '+CASE.securing.length+'</div>'+
+     '<div>Findings selected</div><div class="v">'+S.picks.length+'</div>'+
+     '<div>Entries in the contamination log</div><div class="v">'+S.contam.length+'</div>'+
+     '</div>';
+  if(missing.length) h+='<div class="warnbar"><b>Your record is incomplete.</b><br>'+missing.join('<br>')+
+    '<br><br>This is not a grade — it is a list of what is missing from the file you are about to hand in. '+
+    'Nothing stops you submitting it incomplete.</div>';
+  h+='<p style="font-size:.85rem;color:var(--ink-dim);margin-top:1rem">'+
+     'The <b>log</b> is a CSV of every decision, frame and timestamp. The <b>contact sheet</b> is a single image '+
+     'containing every photograph you took, captioned and in order. Submit both.</p>';
+  $("#repBody").innerHTML=h;
+  $("#repSub").textContent=S.tech+(S.partner?" with "+S.partner:"")+" · case 26-0417 · "+stamp();
+  openScrim("#scrimReport");
+}
+
+/* Every accepted photograph, in record order. */
+function photoList(){
+  const out=[];
+  CASE.overalls.forEach(o=>{ if(S.ov[o.id].img) out.push({label:o.id,kind:o.name.replace("Overall — ",""),d:S.ov[o.id]}); });
+  EVIDENCE_KEYS.forEach(k=>{ const e=S.ev[k];
+    ["mid","close"].forEach(s=>{ if(e.shots[s]) out.push({
+      label:CASE.items[k].id+(e.marker!==null?" · marker "+e.marker:""),
+      kind:(s==="mid"?"midrange":"close-up with scale"), d:e.shots[s]}); }); });
+  return out;
+}
+
+/* Compose all photographs into one captioned contact sheet. */
+function contactSheet(cb){
+  const photos=photoList();
+  if(!photos.length){ cb(null); return; }
+  const CW=420, CAP=34, COLS=3, PAD=14, HEAD=64;
+  const imgs=photos.map(p=>{ const i=new Image(); i.src=p.d.img; return i; });
+  let loaded=0;
+  const done=()=>{
+    const ch=Math.round(CW*imgs[0].height/imgs[0].width);
+    const rows=Math.ceil(photos.length/COLS);
+    const c=document.createElement("canvas");
+    c.width=COLS*CW+(COLS+1)*PAD;
+    c.height=HEAD+rows*(ch+CAP+PAD)+PAD;
+    const x=c.getContext("2d");
+    x.fillStyle="#15181d"; x.fillRect(0,0,c.width,c.height);
+    x.fillStyle="#e6e2d9"; x.font="bold 20px monospace";
+    x.fillText("CASE 26-0417 — SCENE PHOTOGRAPH LOG",PAD,34);
+    x.fillStyle="#9aa1ab"; x.font="13px monospace";
+    x.fillText(S.tech+(S.partner?"  with "+S.partner:"")+"   released "+stamp()+"   "+photos.length+" frames",PAD,54);
+    photos.forEach((p,i)=>{
+      const col=i%COLS, row=Math.floor(i/COLS);
+      const px=PAD+col*(CW+PAD), py=HEAD+row*(ch+CAP+PAD);
+      x.drawImage(imgs[i],px,py,CW,ch);
+      x.strokeStyle="#2e343d"; x.lineWidth=1; x.strokeRect(px+.5,py+.5,CW-1,ch-1);
+      x.fillStyle="#e6e2d9"; x.font="bold 13px monospace"; x.fillText(p.label,px,py+ch+16);
+      x.fillStyle="#9aa1ab"; x.font="12px monospace"; x.fillText(p.kind+"   "+p.d.t,px,py+ch+31);
+    });
+    cb(c.toDataURL("image/png"));
+  };
+  imgs.forEach(i=>{ i.onload=i.onerror=()=>{ if(++loaded===imgs.length) done(); }; });
+}
+
+/* Plain browser download — works on GitHub Pages, no host capability needed. */
+function saveFile(name, data, mime){
+  const a=document.createElement("a");
+  a.download=name;
+  a.href = mime ? URL.createObjectURL(new Blob([data],{type:mime})) : data;
+  document.body.appendChild(a); a.click(); a.remove();
+  if(mime) setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function slug(){ return (S.tech||"tech").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"tech"; }
+
 function csv(){
   const rows=[["Case","Technician","Partner","Ref","Marker","Description","Frames accepted","Frames rejected","Rejection reasons","Time"]];
+  rows.push(["— SECURING DECISIONS —"]);
+  CASE.securing.forEach((q,i)=>{
+    const a=S.secureAns[i];
+    rows.push(["26-0417",S.tech,S.partner,"SEC"+(i+1),"",q.q,
+      a===null?"no answer":q.opts[a].t, a!==null&&q.opts[a].ok?"correct":"incorrect","",S.secureTime||""]);
+  });
+  rows.push(["— INTERPRETATION —"]);
+  rows.push(["26-0417",S.tech,S.partner,"CONC","","Scene interpretation",
+    S.conc!==null?CASE.conclusions[S.conc].t:"no answer",
+    S.conc!==null&&CASE.conclusions[S.conc].ok?"correct":"incorrect","",""]);
+  S.picks.forEach((p,n)=>rows.push(["26-0417",S.tech,S.partner,"FIND"+(n+1),"","Supporting finding",
+    CASE.findings[p].t, CASE.findings[p].ok?"correct":"incorrect","",""]));
+  rows.push(["— SCENE RECORD —"]);
   CASE.overalls.forEach(o=>{ const r=S.ov[o.id];
     rows.push(["26-0417",S.tech,S.partner,o.id,"",o.name,r.img?"overall":"none",r.rejects.length,
       r.rejects.map(x=>x.why).join(" | "),r.t||""]); });
@@ -1283,18 +1385,15 @@ $("#btnStart").addEventListener("click",()=>{
 $("#briefClose").addEventListener("click",()=>{ if(S.phase!=="brief") closeScrim("#scrimBrief"); });
 $("#btnBrief").addEventListener("click",()=>openScrim("#scrimBrief"));
 $("#secureSubmit").addEventListener("click",()=>{
-  let anyNew=false;
   CASE.securing.forEach((q,i)=>{
-    if(S.secureTries[i].some(t=>t.ok)) return;
     const sel=$("#secureBody").querySelector('input[name="q'+i+'"]:checked');
-    if(!sel) return;
-    const j=+sel.value; S.secureTries[i].push({i:j, ok:!!q.opts[j].ok, t:stamp()}); anyNew=true;
-    if(!q.opts[j].ok) S.flags.push("Securing decision "+(i+1)+": rejected answer");
+    S.secureAns[i] = sel ? +sel.value : null;
   });
   S.tech=($("#techName")&&$("#techName").value||"Unnamed technician").trim();
   S.partner=($("#techPartner")&&$("#techPartner").value||"").trim();
-  const allOk=CASE.securing.every((q,i)=>S.secureTries[i].some(t=>t.ok));
-  if(!allOk){ if(!anyNew){ alert("Answer the remaining decisions."); return; } drawSecure(); return; }
+  const missing=S.secureAns.filter(a=>a===null).length;
+  if(missing){ alert("Answer all four decisions before entering the scene."); return; }
+  S.secureTime=stamp();
   closeScrim("#scrimSecure");
   S.phase="walkthrough"; lane.visible=true; updatePhaseUI(); renderRail();
   setPrompt("Approach path established along the north wall. Walk through and note every feature — touch nothing.");
@@ -1334,15 +1433,21 @@ $("#repCopy").addEventListener("click",()=>{
     ()=>{ $("#repCopy").textContent="Copied"; setTimeout(()=>$("#repCopy").textContent="Copy log as text",1600); },
     ()=>{ $("#repCopy").textContent="Copy blocked by browser"; });
 });
-(async function(){
-  const dl=await (window.claude&&claude.use?claude.use("downloads"):null);
-  const btn=$("#repCsv");
-  if(!dl){ btn.style.display="none"; return; }
-  btn.addEventListener("click",async()=>{
-    try{ await dl.save({filename:"26-0417-scene-documentation.csv",data:csv()}); btn.textContent="Saved"; }
-    catch(err){ btn.textContent=err&&err.code==="declined"?"Download cancelled":"Download unavailable — use Copy"; }
+$("#repCsv").addEventListener("click",()=>{
+  saveFile("26-0417-log-"+slug()+".csv", csv(), "text/csv");
+  $("#repCsv").textContent="Log saved";
+  setTimeout(()=>$("#repCsv").textContent="Download log (CSV)",2200);
+});
+$("#repSheet").addEventListener("click",()=>{
+  const b=$("#repSheet"); b.disabled=true; b.textContent="Composing…";
+  contactSheet(url=>{
+    b.disabled=false;
+    if(!url){ b.textContent="No photographs to export"; return; }
+    saveFile("26-0417-photographs-"+slug()+".png", url);
+    b.textContent="Contact sheet saved";
+    setTimeout(()=>b.textContent="Download contact sheet",2200);
   });
-})();
+});
 addEventListener("resize",()=>{
   camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
