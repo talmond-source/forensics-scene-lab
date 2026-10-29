@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Securing &amp; Documenting the Scene — Case 26-0417</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0c0f; --panel:#15181d; --panel-2:#1c2027; --line:#2e343d; --line-soft:#232830;
+  --ink:#e6e2d9; --ink-dim:#9aa1ab; --ink-faint:#6b727c;
+  --tag:#a6362a; --tag-soft:#5c2019; --logged:#6e8f76; --warn:#c9a227; --marker:#d9c15a;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+:root:not([data-theme="light"]){color-scheme:dark}
+:root[data-theme="dark"]{color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+button{font-family:inherit;font-size:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--warn);outline-offset:2px}
+kbd{font-family:var(--mono);font-size:.74rem;background:var(--panel-2);border:1px solid var(--line);
+  padding:.05rem .3rem;margin:0 .1rem;white-space:nowrap}
+
+#viewport{position:fixed;inset:0}
+#viewport canvas{display:block;width:100%;height:100%}
+
+#reticle{position:fixed;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;pointer-events:none;opacity:.65;transition:opacity .15s}
+#reticle::before,#reticle::after{content:"";position:absolute;background:var(--ink)}
+#reticle::before{left:8px;top:0;width:2px;height:18px}
+#reticle::after{top:8px;left:0;height:2px;width:18px}
+#reticle.hot{opacity:1}
+#reticle.hot::before,#reticle.hot::after{background:var(--tag)}
+#reticle.place::before,#reticle.place::after{background:var(--marker)}
+
+#statusbar{position:fixed;top:0;left:0;right:0;display:flex;gap:1px;background:var(--line-soft);
+  border-bottom:1px solid var(--line);pointer-events:none;z-index:10}
+#statusbar>div{background:var(--panel);padding:.5rem .85rem}
+#caseid{font-family:var(--mono);font-size:.76rem;color:var(--ink-dim)}
+#phaselabel{flex:1;font-size:.85rem;font-weight:500;min-width:0}
+#phaselabel small{display:block;color:var(--ink-dim);font-weight:400;font-size:.75rem;margin-top:1px}
+#clock{font-family:var(--mono);font-size:.76rem;color:var(--ink-dim)}
+
+#prompt{position:fixed;left:50%;bottom:5.2rem;transform:translateX(-50%);background:var(--panel);
+  border:1px solid var(--line);border-left:3px solid var(--tag);padding:.5rem .8rem;font-size:.85rem;
+  max-width:min(34rem,90vw);opacity:0;transition:opacity .12s;pointer-events:none;z-index:9;line-height:1.5}
+#prompt.show{opacity:1}
+#prompt.marker{border-left-color:var(--marker)}
+#prompt.alarm{border-left-color:var(--warn);background:#1e1a10}
+
+#toolbar{position:fixed;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:1px;background:var(--line-soft);
+  border-top:1px solid var(--line);z-index:10}
+#toolbar button{background:var(--panel);border:0;padding:.6rem .85rem;font-size:.79rem;color:var(--ink-dim);
+  display:flex;align-items:center;gap:.4rem}
+#toolbar button:hover:not(:disabled){background:var(--panel-2);color:var(--ink)}
+#toolbar button:disabled{opacity:.38;cursor:not-allowed}
+#toolbar button.on{color:var(--warn)}
+#toolbar button.marker.on{color:var(--marker)}
+#toolbar .spacer{flex:1;background:var(--panel)}
+#toolbar .primary{color:var(--ink);font-weight:500}
+#toolbar .primary:not(:disabled){box-shadow:inset 3px 0 0 var(--logged)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ink-faint);flex:none}
+.dot.done{background:var(--logged)}
+
+#rail{position:fixed;right:0;top:2.35rem;bottom:2.6rem;width:17.5rem;background:var(--panel);
+  border-left:1px solid var(--line);display:flex;flex-direction:column;transform:translateX(100%);
+  transition:transform .18s ease;z-index:8}
+#rail.open{transform:none}
+#rail h2{margin:0;padding:.6rem .85rem;font-size:.79rem;font-weight:600;border-bottom:1px solid var(--line);
+  display:flex;justify-content:space-between;gap:.5rem}
+#rail h2 span{color:var(--tag);font-weight:400;font-size:.72rem}
+#raillist{overflow-y:auto;flex:1}
+.railsec{padding:.4rem .85rem;font-size:.69rem;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--ink-faint);background:var(--panel-2);border-bottom:1px solid var(--line-soft)}
+.railitem{padding:.55rem .85rem;border-bottom:1px solid var(--line-soft);font-size:.79rem}
+.railitem .id{font-family:var(--mono);font-size:.71rem;color:var(--ink-faint)}
+.railitem .mk{font-family:var(--mono);font-size:.71rem;color:var(--marker);float:right}
+.railitem .nm{display:block;margin:.1rem 0 .25rem}
+.railitem .st{font-size:.71rem;color:var(--ink-dim)}
+.railitem .st.ok{color:var(--logged)}
+.railitem .st.bad{color:var(--tag)}
+.railitem.undisc{opacity:.45;font-style:italic}
+
+.scrim{position:fixed;inset:0;background:rgba(6,7,9,.74);display:none;align-items:center;justify-content:center;padding:1rem;z-index:20}
+.scrim.open{display:flex}
+.sheet{background:var(--panel);border:1px solid var(--line);max-width:46rem;width:100%;max-height:88vh;overflow-y:auto}
+.sheet-head{padding:.9rem 1.1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;
+  align-items:flex-start;gap:1rem;position:sticky;top:0;background:var(--panel);z-index:2}
+.sheet-head h1,.sheet-head h2{margin:0;font-size:1.05rem;font-weight:600}
+.sheet-head .sub{font-family:var(--mono);font-size:.73rem;color:var(--ink-faint);margin-top:.2rem}
+.sheet-body{padding:1.1rem}
+.sheet-body p{margin:0 0 .8rem;line-height:1.55;max-width:64ch}
+.sheet-foot{padding:.8rem 1.1rem;border-top:1px solid var(--line);display:flex;gap:.6rem;flex-wrap:wrap;
+  justify-content:flex-end;position:sticky;bottom:0;background:var(--panel)}
+.btn{background:var(--panel-2);border:1px solid var(--line);padding:.5rem .9rem;font-size:.85rem}
+.btn:hover:not(:disabled){border-color:var(--ink-faint)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn.go{background:var(--tag-soft);border-color:var(--tag)}
+.btn.go:hover:not(:disabled){background:var(--tag)}
+.closex{background:none;border:0;color:var(--ink-faint);font-size:1.3rem;line-height:1;padding:0 .2rem}
+
+.tag{background:var(--panel-2);border:1px solid var(--line);border-top:3px solid var(--tag);
+  padding:.85rem 1rem;margin-bottom:1rem;position:relative}
+.tag::before{content:"";position:absolute;top:-3px;left:1.1rem;width:12px;height:12px;border-radius:50%;
+  background:var(--bg);border:1px solid var(--line);transform:translateY(-50%)}
+.tag .tid{font-family:var(--mono);font-size:.74rem;color:var(--ink-dim);padding-left:1.6rem}
+.tag .tid b{color:var(--marker);font-weight:600}
+.tag .tnm{font-size:.98rem;font-weight:500;margin:.25rem 0 .4rem}
+.tag .tdesc{font-size:.86rem;line-height:1.5;color:var(--ink-dim);margin:0}
+
+.step{border-top:1px solid var(--line-soft);padding-top:.85rem;margin-top:.85rem}
+.step h3{margin:0 0 .2rem;font-size:.9rem;font-weight:600}
+.step h3 .num{font-family:var(--mono);color:var(--ink-faint);margin-right:.4rem}
+.step .hint{margin:0 0 .6rem;font-size:.8rem;color:var(--ink-dim);line-height:1.5}
+.shots{display:flex;gap:.5rem;flex-wrap:wrap}
+.shots .btn{display:flex;align-items:center;gap:.45rem}
+.thumbs{display:flex;gap:.5rem;margin-top:.7rem;flex-wrap:wrap}
+.thumbs figure{margin:0;width:9rem}
+.thumbs img{width:100%;display:block;border:1px solid var(--line)}
+.thumbs figcaption{font-size:.69rem;color:var(--ink-faint);margin-top:.2rem;font-family:var(--mono)}
+
+.opts{display:flex;flex-direction:column;gap:.35rem;margin:0 0 .8rem}
+.opts label{display:flex;gap:.55rem;align-items:flex-start;padding:.5rem .6rem;border:1px solid var(--line-soft);
+  font-size:.85rem;line-height:1.45;cursor:pointer}
+.opts label:hover{border-color:var(--line);background:var(--panel-2)}
+.opts input{margin-top:.22rem;flex:none;accent-color:var(--tag)}
+.opts label.tried{opacity:.5;border-style:dashed}
+.opts label.tried em{color:var(--tag);font-style:normal}
+.warnbar{border-left:3px solid var(--warn);background:rgba(201,162,39,.08);padding:.55rem .7rem;font-size:.82rem;line-height:1.5;margin:0 0 .8rem}
+.okbar{border-left:3px solid var(--logged);background:rgba(110,143,118,.1);padding:.55rem .7rem;font-size:.82rem;line-height:1.5;margin:0 0 .8rem}
+.mkbar{border-left:3px solid var(--marker);background:rgba(217,193,90,.08);padding:.55rem .7rem;font-size:.82rem;line-height:1.5;margin:0 0 .8rem}
+.reject{border:1px solid var(--tag);border-left-width:3px;background:rgba(166,54,42,.09);margin:0 0 1rem}
+.reject .rhead{padding:.5rem .75rem;font-size:.86rem;font-weight:600;border-bottom:1px solid rgba(166,54,42,.35)}
+.reject .rbody{display:flex;gap:.8rem;padding:.75rem;align-items:flex-start}
+.reject .rbody img{width:11rem;flex:none;border:1px solid var(--line)}
+.reject .rbody p{margin:0;font-size:.84rem;line-height:1.55}
+
+table.log{width:100%;border-collapse:collapse;font-size:.77rem}
+table.log th,table.log td{border:1px solid var(--line);padding:.4rem .5rem;text-align:left;vertical-align:top}
+table.log th{background:var(--panel-2);font-weight:600}
+table.log td.mono{font-family:var(--mono)}
+.scoregrid{display:grid;grid-template-columns:1fr auto;gap:.3rem .9rem;font-size:.86rem;margin-bottom:1rem}
+.scoregrid .v{font-family:var(--mono);text-align:right}
+.scoregrid .tot{border-top:1px solid var(--line);padding-top:.35rem;font-weight:600}
+.scoregrid .pen{color:var(--tag)}
+.flag{color:var(--tag)}
+#namebar{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.1rem}
+#namebar input{background:var(--panel-2);border:1px solid var(--line);color:var(--ink);padding:.45rem .6rem;
+  font-size:.85rem;font-family:inherit;flex:1;min-width:11rem}
+.qblock{border-top:1px solid var(--line-soft);padding-top:.9rem;margin-top:.9rem}
+.qblock h3{margin:0 0 .15rem;font-size:.92rem;font-weight:600}
+.qblock .situ{margin:0 0 .6rem;font-size:.84rem;color:var(--ink-dim);line-height:1.5}
+
+@media (max-width:760px){#rail{width:100%}.reject .rbody{flex-direction:column}.reject .rbody img{width:100%}}
+</style>
+</head>
+<body>
+<div id="viewport"></div>
+<div id="reticle"></div>
+
+<div id="statusbar">
+  <div id="caseid">26-0417</div>
+  <div id="phaselabel">Loading<small>&nbsp;</small></div>
+  <div id="clock">--:--</div>
+</div>
+<div id="prompt"></div>
+
+<aside id="rail"><h2>Scene log <span id="railcount"></span></h2><div id="raillist"></div></aside>
+
+<div id="toolbar">
+  <button id="btnRail">Scene log</button>
+  <button id="btnOveralls" disabled>Overall photographs</button>
+  <button id="btnMarker" class="marker" disabled>Place marker <kbd>M</kbd></button>
+  <button id="btnLight">Oblique light <kbd>L</kbd></button>
+  <button id="btnQuality">Quality: High</button>
+  <button id="btnBrief">Case brief</button>
+  <span class="spacer"></span>
+  <button id="btnAdvance" class="primary" disabled>Secure the scene</button>
+</div>
+
+<div class="scrim open" id="scrimBrief"><div class="sheet">
+  <div class="sheet-head"><div>
+    <h1>Securing and documenting the scene</h1>
+    <div class="sub">Case 26-0417 · 14 Ashcroft Lane, home study · Johnston PD</div>
+  </div><button class="closex" id="briefClose" aria-label="Close">&times;</button></div>
+  <div class="sheet-body">
+    <p>At 07:52 a resident called to report finding a household member unresponsive on the floor of the home study. The caller stated the decedent had been working late and appeared to have fallen and struck their head on the corner of the desk. Patrol confirmed death at 08:04. The medical examiner's investigator has completed a preliminary body examination and left a note at the outline.</p>
+    <p>You are the first evidence technician on scene. <b>You will not collect anything today.</b> Collection is a later shift, by someone who was never here and who will rely entirely on the record you leave behind. Your whole job is to make that record honest and complete.</p>
+    <p><b>1. Secure.</b> Decide who leaves, where the perimeter goes, how you get in, and who gets written down.<br>
+      <b>2. Walk through.</b> Look. Touch nothing, mark nothing, photograph nothing. Find every feature in the room.<br>
+      <b>3. Overall photographs.</b> Four corners, before a single marker goes down.<br>
+      <b>4. Mark and photograph each item.</b> Marker first, then a midrange that shows where it sits, then a close-up with scale.</p>
+    <p>Stay on your approach path. The floor between the doorway and the body is where transfer evidence is most likely, and every step you take off the path is a step you will be asked about later.</p>
+    <p><b>Controls:</b> <kbd>W A S D</kbd> walk · drag to look, or <kbd>P</kbd> for mouse-lock · <kbd>E</kbd> examine or capture · <kbd>M</kbd> marker mode · <kbd>L</kbd> oblique light · <kbd>Shift</kbd> move faster. Some things will not show up under normal room light.</p>
+  </div>
+  <div class="sheet-foot"><button class="btn go" id="btnStart">Begin</button></div>
+</div></div>
+
+<div class="scrim" id="scrimSecure"><div class="sheet">
+  <div class="sheet-head"><div><h2>Securing the scene</h2>
+    <div class="sub">Four decisions before entry · each is checked before you proceed</div></div></div>
+  <div class="sheet-body" id="secureBody"></div>
+  <div class="sheet-foot"><button class="btn go" id="secureSubmit">Commit these decisions</button></div>
+</div></div>
+
+<div class="scrim" id="scrimOveralls"><div class="sheet">
+  <div class="sheet-head"><div><h2>Overall photographs</h2>
+    <div class="sub">Four corners · the undisturbed scene, before any marker is placed</div></div>
+    <button class="closex" id="ovClose" aria-label="Close">&times;</button></div>
+  <div class="sheet-body" id="ovBody"></div>
+  <div class="sheet-foot"><button class="btn" id="ovDone">Back to scene</button></div>
+</div></div>
+
+<div class="scrim" id="scrimItem"><div class="sheet">
+  <div class="sheet-head"><div><h2 id="itemTitle">Item</h2><div class="sub" id="itemSub"></div></div>
+    <button class="closex" id="itemClose" aria-label="Close">&times;</button></div>
+  <div class="sheet-body" id="itemBody"></div>
+  <div class="sheet-foot"><button class="btn" id="itemDone">Back to scene</button></div>
+</div></div>
+
+<div class="scrim" id="scrimConc"><div class="sheet">
+  <div class="sheet-head"><div><h2>Scene summary</h2><div class="sub">Complete before releasing the scene</div></div></div>
+  <div class="sheet-body" id="concBody"></div>
+  <div class="sheet-foot"><button class="btn" id="concBack">Keep working</button>
+    <button class="btn go" id="concSubmit">Release the scene</button></div>
+</div></div>
+
+<div class="scrim" id="scrimReport"><div class="sheet">
+  <div class="sheet-head"><div><h2>Scene documentation record — case 26-0417</h2><div class="sub" id="repSub"></div></div></div>
+  <div class="sheet-body" id="repBody"></div>
+  <div class="sheet-foot"><button class="btn" id="repCopy">Copy log as text</button>
+    <button class="btn go" id="repCsv">Download log (CSV)</button></div>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+const BUILD = "build 6";
+
+/* ══════════════════════════════════════════════════════════
+   CASE DATA — a new case is a new copy of this block.
+   ══════════════════════════════════════════════════════════ */
+const CASE = {
+  id:"26-0417",
+
+  securing:[
+    { q:"Who stays and who goes?",
+      situ:"Patrol reports the caller and two other household members are still in the house. One of them is standing in the study doorway watching you work.",
+      opts:[
+        {t:"Move everyone out of the study and off the approach path, keep them separated from one another, and have patrol record who they are and what they say they touched.",ok:true},
+        {t:"Let them stay in the doorway as long as they agree not to touch anything.",ok:false,
+         why:"Anyone inside the perimeter adds hair, fibre and footwear to the scene, and the doorway is your approach path. A watching party also learns exactly what you noticed and when — which matters a great deal if they later become a suspect."},
+        {t:"Send all three out of the house entirely so the scene is completely clear.",ok:false,
+         why:"They are witnesses, and the caller's account is itself something you will be testing the scene against. Separate them so they cannot align their stories, but do not lose them."},
+        {t:"Start photographing while they wait where they are, so the scene is recorded before anything else changes.",ok:false,
+         why:"Speed does not beat control. Anyone in frame or in the room is contamination, and your very first photographs would record a scene that already has unexplained people standing in it."}]},
+
+    { q:"Where does the perimeter go?",
+      situ:"You have tape and two officers. The study opens onto a hallway, which runs to the side door the caller says they came in through.",
+      opts:[
+        {t:"Outside the study — take in the hallway and the side door the caller used, because a perimeter can always be released later but never enlarged after the fact.",ok:true},
+        {t:"At the study doorway, since that is where the body and the evidence are.",ok:false,
+         why:"Too tight. The route the caller walked, what they touched on the way, anything dropped in the hallway — all potentially evidence, and all gone once people have been moving through it freely."},
+        {t:"The entire property including the street frontage, to be safe.",ok:false,
+         why:"Over-broad perimeters are not maintained. With two officers you cannot hold a property line, and a perimeter nobody enforces is worse than a smaller one that holds."},
+        {t:"No tape — it is a private residence and the family has consented.",ok:false,
+         why:"A perimeter is not about your legal authority to be there. It is a physical control on who crosses, and it is what lets you testify later that nobody else did."}]},
+
+    { q:"How do you get in?",
+      situ:"The study is roughly eight metres by six. The body is near the desk on the far wall. A rug covers much of the centre of the floor.",
+      opts:[
+        {t:"Establish one common approach path along the north wall, away from the rug and the body, and require every person who enters to use it.",ok:true},
+        {t:"Take the shortest route from the door to the body so you spend as little time in the room as possible.",ok:false,
+         why:"The shortest route runs straight across the centre of the room — precisely where footwear impressions, drag marks and transfer evidence are most likely to be. You would destroy the floor evidence on your way to look at the body."},
+        {t:"Let each person entering choose their own route as long as they are careful.",ok:false,
+         why:"A single documented path means any disturbance outside it was not yours. Multiple informal routes mean every mark on that floor is now arguably a technician's."},
+        {t:"Walk the perimeter of the room first along all four walls, then move inward.",ok:false,
+         why:"Closer, but you are still putting your feet everywhere before you know what is on the floor. One path in, held until the floor has been searched and documented."}]},
+
+    { q:"Who gets written down?",
+      situ:"Over the next two hours a supervisor, the ME investigator, two detectives and a second technician will all want access.",
+      opts:[
+        {t:"Start a scene entry log at the perimeter recording every person who crosses it, with time in, time out, and their reason for entering.",ok:true},
+        {t:"Log the technicians only, since they are the ones handling evidence.",ok:false,
+         why:"Anyone who enters can alter the scene, and any one of them can be called to explain why their shoe print is on that floor. A log that omits the supervisor is a log that cannot account for the scene."},
+        {t:"Note the names at the end of the shift from memory, so the log does not slow anybody down.",ok:false,
+         why:"A log reconstructed afterwards is not a record, it is a recollection. Its whole value in court is that it was made at the time by someone with no idea which detail would end up mattering."},
+        {t:"Rely on body camera footage from the officer at the door.",ok:false,
+         why:"Useful corroboration, not a substitute. Footage has gaps, batteries and retention limits; the written log is the document that gets entered."}]}
+  ],
+
+  overalls:[
+    {id:"OV1", name:"Overall — northeast, from the doorway", at:[2.60,-2.45],
+     desc:"The view a person entering the room gets. Establishes the relationship between the door, the body and the desk."},
+    {id:"OV2", name:"Overall — southeast, by the window", at:[3.25, 2.40],
+     desc:"Looks back across the rug toward the desk wall, with the window behind you."},
+    {id:"OV3", name:"Overall — southwest, by the bookcase", at:[-3.00, 2.45],
+     desc:"Covers the south and west of the room and the far side of the rug."},
+    {id:"OV4", name:"Overall — northwest, behind the desk", at:[-2.65,-2.45],
+     desc:"Looks out from the desk corner back toward the door and the window."}
+  ],
+
+  items:{
+    ME:{ id:"ME", name:"Medical examiner's preliminary note", kind:"note",
+      desc:"A field note left folded beside the outline by the ME investigator.",
+      body:"Decedent found prone, head oriented toward the desk pedestal. Blunt force injury to the left parietal region. "+
+        "Livor mortis is fixed along the posterior torso and buttocks — the back — and does not correspond to the prone "+
+        "position in which the body was found. Rigor consistent with a postmortem interval of roughly eight to twelve hours. "+
+        "No defensive injury to the hands. Body released to the ME's office at 08:41."},
+
+    E1:{ id:"E1", name:"Bloodstain pattern, west wall", kind:"evidence",
+      desc:"An arc of small elongated stains across the wall above the desk, roughly 1.4 to 1.9 m above the floor. "+
+        "The stains are tapered and the tapers point consistently toward the doorway. Nothing on the desk surface beneath them.",
+      guide:"Pattern evidence lives or dies on the photograph. Your camera has to be square to the wall — a pattern shot at an "+
+        "angle is foreshortened, and every angle and every measurement anyone later takes off that image is wrong.",
+      shot:{ at:[-3.88,1.62,-1.5], r:0.85, normal:[1,0,0], square:0.80, light:"room", surface:"the wall" }},
+
+    E2:{ id:"E2", name:"Wine glass, window sill", kind:"evidence",
+      desc:"A stemmed glass on the window sill on the far side of the room from the desk, with a small amount of residue "+
+        "and a fresh condensation ring beneath it. A second glass sits on the desk near the outline.",
+      guide:"Get the ring on the sill into frame as well as the glass. If the glass is moved on the next shift, that ring is "+
+        "the only surviving record of exactly where it stood and how recently it was set down.",
+      shot:{ at:[3.84,1.06,0.35], r:0.15, normal:null, light:"room" }},
+
+    E3:{ id:"E3", name:"Drag path and crushed fibres, rug", kind:"evidence",
+      desc:"Under oblique light the nap of the rug shows a crushed channel about 40 cm wide running from the centre of "+
+        "the room toward the desk. Loose fibres have collected at the leading edge. Nearly invisible under overhead light.",
+      guide:"This is why you light a floor from a low angle before you walk on it. Shoot it under the oblique light — under "+
+        "the overhead fixture the frame records an empty rug and the channel vanishes from the record entirely.",
+      shot:{ at:[-1.10,0.04,0.30], r:0.85, normal:[0,1,0], square:0.74, light:"oblique",
+             surface:"the rug", closeMax:2.05, floor:true }},
+
+    E4:{ id:"E4", name:"Desk corner — reported impact point", kind:"evidence",
+      desc:"The corner of the desk the caller identified as the surface the decedent struck. The edge is clean. No blood, "+
+        "no hair, no tissue, and no disturbance to the film of dust along the edge.",
+      guide:"Absence of expected evidence is evidence. Mark it and photograph it with exactly the care you would give a stain. "+
+        "A clean corner is the single finding that most directly contradicts the account you were given — and if you do not "+
+        "record it now, nobody can argue from it later.",
+      shot:{ at:[-3.13,0.82,-0.52], r:0.22, normal:null, light:"room" }},
+
+    H1:{ id:"H1", name:"Overturned floor lamp", kind:"herring",
+      desc:"A floor lamp on its side near the south wall. The bulb is intact and the shade undented. There is a cat bed "+
+        "under the window and a scatter of grey hair on the lamp base."},
+    H2:{ id:"H2", name:"Unopened mail on the filing cabinet", kind:"herring",
+      desc:"A stack of eleven unopened envelopes, several from a bank, the topmost postmarked six weeks ago. "+
+        "Interesting to the investigators. Not physical evidence of what happened in this room."}
+  },
+
+  sterile:[
+    {c:[-2.45,-0.85], r:1.15, n:"the body outline"},
+    {c:[-1.10, 0.30], r:0.95, n:"the drag path on the rug"},
+    {c:[-2.95,-1.60], r:0.70, n:"the floor beneath the bloodstain pattern"}
+  ],
+
+  findings:[
+    {t:"The stains on the west wall are tapered and arced, consistent with cast-off from a moving object rather than dripping from a stationary wound.",ok:true},
+    {t:"Livor mortis is fixed on the decedent's back, but the body was found prone — it was moved after death.",ok:true},
+    {t:"A crushed drag channel runs across the rug toward the desk.",ok:true},
+    {t:"The desk corner identified as the impact point is clean, with no blood, hair, or disturbance.",ok:true},
+    {t:"A second used glass sits across the room with a fresh condensation ring.",ok:true},
+    {t:"The floor lamp was knocked over.",ok:false},
+    {t:"There is a stack of unopened bank mail on the filing cabinet.",ok:false}
+  ],
+  conclusions:[
+    {t:"Consistent with the reported accidental fall against the desk corner.",ok:false},
+    {t:"Consistent with a death that occurred elsewhere in the room and was then arranged to look like a fall.",ok:true},
+    {t:"Consistent with death from natural causes with incidental injury.",ok:false},
+    {t:"The scene contains no findings that bear on how the death occurred.",ok:false}
+  ]
+};
+const EVIDENCE_KEYS = Object.keys(CASE.items).filter(k=>CASE.items[k].kind==="evidence");
+
+/* ══════════════════════════════════════════════════════════
+   STATE
+   ══════════════════════════════════════════════════════════ */
+const S = {
+  phase:"brief", observed:new Set(), ev:{}, ov:{}, flags:[],
+  secureTries:[], obliqueOn:false, markerMode:false,
+  nextMarker:1, markers:[], strays:0, contam:[],
+  quality:"high", tech:"", partner:"", conc:null, picks:[], score:null
+};
+EVIDENCE_KEYS.forEach(k=>{ S.ev[k]={shots:{}, rejects:[], lastReject:null, marker:null}; });
+CASE.overalls.forEach(o=>{ S.ov[o.id]={img:null, t:null, rejects:[], lastReject:null}; });
+CASE.securing.forEach(()=>S.secureTries.push([]));
+
+const Q = new URLSearchParams(location.search);
+const HINTS = Q.has("hints"), DEBUG = Q.has("debug");
+
+/* ══════════════════════════════════════════════════════════
+   RENDERER
+   ══════════════════════════════════════════════════════════ */
+const mount = document.getElementById("viewport");
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+mount.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x090b0e);
+scene.fog = new THREE.FogExp2(0x090b0e, 0.022);
+
+const camera = new THREE.PerspectiveCamera(66, innerWidth/innerHeight, 0.05, 60);
+const player = new THREE.Group();
+player.position.set(2.4, 0, -2.3);
+player.add(camera);
+camera.position.set(0,1.62,0);
+scene.add(player);
+
+const RW = 4.0, RD = 3.0, RH = 2.75;
+
+/* ══════════════════════════════════════════════════════════
+   TEXTURES
+   ══════════════════════════════════════════════════════════ */
+function cvs(w,h,draw){ const c=document.createElement("canvas"); c.width=w; c.height=h; draw(c.getContext("2d"),w,h); return c; }
+function tex(w,h,draw,rx,ry){
+  const t=new THREE.CanvasTexture(cvs(w,h,draw));
+  if(rx||ry){ t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(rx||1,ry||1); }
+  t.encoding=THREE.sRGBEncoding;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy ? Math.min(4,renderer.capabilities.getMaxAnisotropy()) : 1;
+  return t;
+}
+function noise(x,w,h,amt,size){
+  for(let i=0;i<w*h/(size*size)*1.6;i++){
+    const a=(Math.random()-0.5)*amt;
+    x.fillStyle="rgba("+(a>0?255:0)+","+(a>0?255:0)+","+(a>0?255:0)+","+Math.abs(a)/255+")";
+    x.fillRect(Math.random()*w,Math.random()*h,size,size);
+  }
+}
+const floorTex = tex(1024,1024,(x,w,h)=>{
+  x.fillStyle="#4a3526"; x.fillRect(0,0,w,h);
+  const pw=128;
+  for(let i=0;i<w/pw;i++){
+    const base=58+Math.random()*26;
+    x.fillStyle="rgb("+(base+16)+","+(base-6)+","+(base-24)+")"; x.fillRect(i*pw,0,pw,h);
+    for(let g=0;g<70;g++){
+      const y=Math.random()*h, len=40+Math.random()*180;
+      x.strokeStyle="rgba(30,18,10,"+(0.05+Math.random()*0.16)+")"; x.lineWidth=0.6+Math.random()*1.6;
+      x.beginPath(); x.moveTo(i*pw+Math.random()*pw,y);
+      x.bezierCurveTo(i*pw+Math.random()*pw,y+len*0.4,i*pw+Math.random()*pw,y+len*0.7,i*pw+Math.random()*pw,y+len);
+      x.stroke();
+    }
+    x.strokeStyle="rgba(18,10,5,.55)"; x.lineWidth=2;
+    x.beginPath(); x.moveTo(i*pw,0); x.lineTo(i*pw,h); x.stroke();
+  }
+  noise(x,w,h,34,2);
+},3,3);
+const wallTex = tex(512,512,(x,w,h)=>{
+  x.fillStyle="#8d8a7e"; x.fillRect(0,0,w,h);
+  for(let i=0;i<340;i++){ x.fillStyle="rgba(0,0,0,"+(Math.random()*0.045)+")";
+    x.beginPath(); x.ellipse(Math.random()*w,Math.random()*h,8+Math.random()*44,8+Math.random()*44,0,0,6.3); x.fill(); }
+  noise(x,w,h,26,2);
+},2.4,1.2);
+const deskTex = tex(512,512,(x,w,h)=>{
+  x.fillStyle="#3f2c1d"; x.fillRect(0,0,w,h);
+  for(let g=0;g<180;g++){ const y=Math.random()*h;
+    x.strokeStyle="rgba(96,66,40,"+(0.05+Math.random()*0.2)+")"; x.lineWidth=0.5+Math.random()*2.2;
+    x.beginPath(); x.moveTo(0,y);
+    x.bezierCurveTo(w*0.3,y+(Math.random()-0.5)*22,w*0.7,y+(Math.random()-0.5)*22,w,y+(Math.random()-0.5)*10); x.stroke(); }
+  noise(x,w,h,22,2);
+});
+const rugTex = tex(512,512,(x,w,h)=>{
+  x.fillStyle="#4e4049"; x.fillRect(0,0,w,h);
+  x.strokeStyle="rgba(150,120,110,.3)"; x.lineWidth=10; x.strokeRect(26,26,w-52,h-52);
+  x.strokeStyle="rgba(120,96,88,.22)"; x.lineWidth=4; x.strokeRect(52,52,w-104,h-104);
+  for(let i=0;i<9;i++){ x.strokeStyle="rgba(140,112,104,"+(0.1+Math.random()*0.1)+")"; x.lineWidth=3;
+    x.beginPath(); x.arc(w/2,h/2,70+i*17,0,6.3); x.stroke(); }
+  noise(x,w,h,30,2);
+});
+const ceilTex = tex(256,256,(x,w,h)=>{ x.fillStyle="#6f6c66"; x.fillRect(0,0,w,h); noise(x,w,h,20,2); },4,3);
+
+/* ══════════════════════════════════════════════════════════
+   MATERIALS + GEOMETRY
+   ══════════════════════════════════════════════════════════ */
+const M = {};
+(function(){
+  const Mat = THREE.MeshStandardMaterial;
+  M.floor=new Mat({map:floorTex, roughness:.68, metalness:0});
+  M.wall =new Mat({map:wallTex,  roughness:.95, metalness:0});
+  M.ceil =new Mat({map:ceilTex,  roughness:1,   metalness:0});
+  M.wood =new Mat({map:deskTex,  roughness:.55, metalness:0});
+  M.rug  =new Mat({map:rugTex,   roughness:.98, metalness:0});
+  M.dark =new Mat({color:0x2a2a2e, roughness:.7,  metalness:.05});
+  M.metal=new Mat({color:0x72767c, roughness:.38, metalness:.75});
+  M.paper=new Mat({color:0xd9d3c4, roughness:.92, metalness:0});
+  M.trim =new Mat({color:0xcfc8b8, roughness:.6,  metalness:0});
+  M.glass=new THREE.MeshPhongMaterial({color:0xcfe2e4,transparent:true,opacity:.4,shininess:140,specular:0x999999});
+  M.night=new THREE.MeshBasicMaterial({color:0x121d2b});
+})();
+
+const colliders=[], occluders=[];
+function box(w,h,d,x,y,z,mat,solid,ry){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  m.position.set(x,y,z); if(ry) m.rotation.y=ry;
+  m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); occluders.push(m);
+  if(solid) colliders.push({x0:x-w/2-0.28,x1:x+w/2+0.28,z0:z-d/2-0.28,z1:z+d/2+0.28});
+  return m;
+}
+const floorM=new THREE.Mesh(new THREE.PlaneGeometry(RW*2,RD*2),M.floor);
+floorM.rotation.x=-Math.PI/2; floorM.receiveShadow=true; scene.add(floorM); occluders.push(floorM);
+const ceilM=new THREE.Mesh(new THREE.PlaneGeometry(RW*2,RD*2),M.ceil);
+ceilM.rotation.x=Math.PI/2; ceilM.position.y=RH; scene.add(ceilM);
+
+box(2.6,RH,0.16,-2.7,RH/2,-RD,M.wall); box(0.9,RH,0.16,0.35,RH/2,-RD,M.wall);
+box(0.7,RH,0.16,3.65,RH/2,-RD,M.wall); box(2.4,0.55,0.16,2.0,RH-0.275,-RD,M.wall);
+box(RW*2,RH,0.16,0,RH/2,RD,M.wall); box(0.16,RH,RD*2,-RW,RH/2,0,M.wall);
+box(0.16,RH,2.2,RW,RH/2,-1.9,M.wall); box(0.16,RH,2.2,RW,RH/2,1.9,M.wall);
+box(0.16,0.9,1.6,RW,0.45,0,M.wall); box(0.16,0.6,1.6,RW,2.45,0,M.wall);
+box(0.12,1.25,1.65,RW-0.03,1.5,0,M.night);
+box(0.06,0.06,1.7,RW-0.10,0.90,0,M.trim); box(0.06,0.06,1.7,RW-0.10,2.14,0,M.trim);
+box(0.06,1.3,0.06,RW-0.10,1.52,-0.82,M.trim); box(0.06,1.3,0.06,RW-0.10,1.52,0.82,M.trim);
+box(0.05,1.25,0.04,RW-0.10,1.52,0,M.trim);
+box(0.30,0.05,1.7,RW-0.17,0.92,0,M.wood);
+box(0.08,2.15,0.09,0.84,1.07,-RD+0.02,M.trim); box(0.08,2.15,0.09,3.26,1.07,-RD+0.02,M.trim);
+box(2.5,0.09,0.09,2.05,2.15,-RD+0.02,M.trim); box(1.0,2.1,0.05,3.0,1.05,-RD+0.12,M.wood,false,0.42);
+box(RW*2,0.11,0.07,0,0.055,-RD+0.09,M.trim); box(RW*2,0.11,0.07,0,0.055,RD-0.09,M.trim);
+box(0.07,0.11,RD*2,-RW+0.09,0.055,0,M.trim); box(0.07,0.11,RD*2,RW-0.09,0.055,0,M.trim);
+
+box(0.80,0.05,1.85,-3.58,0.755,-1.50,M.wood,true);
+box(0.70,0.70,0.52,-3.60,0.36,-2.20,M.wood);
+box(0.60,0.04,0.44,-3.57,0.52,-2.20,M.dark);
+box(0.06,0.72,0.06,-3.30,0.36,-0.70,M.wood); box(0.06,0.72,0.06,-3.88,0.36,-0.70,M.wood);
+box(0.05,2.00,1.70,-3.90,1.00,1.20,M.wood);
+box(0.36,2.00,0.05,-3.70,1.00,0.38,M.wood); box(0.36,2.00,0.05,-3.70,1.00,2.02,M.wood);
+box(0.36,0.05,1.70,-3.70,1.98,1.20,M.wood);
+[0.55,1.10,1.62].forEach(y=>box(0.36,0.04,1.60,-3.70,y,1.20,M.wood));
+colliders.push({x0:-4.3,x1:-3.24,z0:0.07,z1:2.33});
+for(let i=0;i<16;i++){
+  const hgt=0.22+Math.random()*0.08, shelf=[0.57,1.64][i<8?0:1];
+  box(0.19,hgt,0.034,-3.77,shelf+hgt/2,0.52+(i%8)*0.057,
+    new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL(0.03+Math.random()*0.12,0.22,0.16+Math.random()*0.12),roughness:.8}));
+}
+box(0.56,1.30,0.92,3.48,0.65,-2.30,M.metal,true);
+[0.30,0.72,1.12].forEach(y=>box(0.02,0.05,0.80,3.20,y,-2.30,M.dark));
+box(0.60,0.14,0.60,3.26,0.07,2.40,M.dark);
+box(0.50,0.05,0.50,-2.36,0.26,-0.14,M.dark,false,0.52);
+box(0.46,0.46,0.05,-2.33,0.50,-0.36,M.dark,false,0.52);
+const chairPost=new THREE.Mesh(new THREE.CylinderGeometry(.035,.035,.34,10),M.metal);
+chairPost.position.set(-2.52,.17,.08); chairPost.rotation.z=Math.PI/2.1; chairPost.castShadow=true; scene.add(chairPost);
+const lampPole=new THREE.Mesh(new THREE.CylinderGeometry(.028,.028,1.45,10),M.metal);
+lampPole.position.set(2.30,.12,1.95); lampPole.rotation.z=Math.PI/2; lampPole.rotation.y=.48;
+lampPole.castShadow=true; scene.add(lampPole); occluders.push(lampPole);
+const lampShade=new THREE.Mesh(new THREE.CylinderGeometry(.17,.21,.27,14,1,true),M.paper);
+lampShade.position.set(1.62,.20,2.32); lampShade.rotation.z=Math.PI/2; lampShade.material.side=THREE.DoubleSide;
+lampShade.castShadow=true; scene.add(lampShade); occluders.push(lampShade);
+const lampBase=new THREE.Mesh(new THREE.CylinderGeometry(.15,.15,.03,16),M.metal);
+lampBase.position.set(3.02,.12,1.70); lampBase.rotation.z=Math.PI/2; scene.add(lampBase);
+const fixture=new THREE.Mesh(new THREE.CylinderGeometry(.19,.26,.13,18),M.paper);
+fixture.position.set(0,RH-.10,0); scene.add(fixture);
+for(let i=0;i<6;i++) box(.19,.002,.26,-3.62+(Math.random()-.5)*.22,.783+i*.003,-1.30+(Math.random()-.5)*.9,M.paper,false,Math.random()*.7-.35);
+box(.30,.075,.22,3.48,1.345,-2.30,M.paper,false,.18);
+const rug=new THREE.Mesh(new THREE.PlaneGeometry(3.35,2.35),M.rug);
+rug.rotation.x=-Math.PI/2; rug.position.set(-.40,.016,.20); rug.receiveShadow=true; scene.add(rug); occluders.push(rug);
+
+function wineGlass(x,y,z){
+  const g=new THREE.Group();
+  const bowl=new THREE.Mesh(new THREE.LatheGeometry([new THREE.Vector2(.004,0),new THREE.Vector2(.030,.012),
+    new THREE.Vector2(.044,.052),new THREE.Vector2(.047,.090),new THREE.Vector2(.045,.094)],14),M.glass);
+  bowl.position.y=.112;
+  const stem=new THREE.Mesh(new THREE.CylinderGeometry(.0055,.0075,.072,8),M.glass); stem.position.y=.040;
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(.040,.040,.006,16),M.glass); base.position.y=.003;
+  const wine=new THREE.Mesh(new THREE.CylinderGeometry(.034,.026,.018,14),
+    new THREE.MeshPhongMaterial({color:0x5c1522,transparent:true,opacity:.8,shininess:80})); wine.position.y=.128;
+  g.add(bowl,stem,base,wine); g.position.set(x,y,z); scene.add(g); return g;
+}
+wineGlass(-3.46,.785,-2.02); wineGlass(3.84,.947,.35);
+const condRing=new THREE.Mesh(new THREE.RingGeometry(.036,.052,20),
+  new THREE.MeshBasicMaterial({color:0xa9c0c2,transparent:true,opacity:.42,side:THREE.DoubleSide}));
+condRing.rotation.x=-Math.PI/2; condRing.position.set(3.84,.951,.35); scene.add(condRing);
+
+const spatterTex=tex(768,448,(x,w,h)=>{
+  x.clearRect(0,0,w,h);
+  for(let i=0;i<78;i++){
+    const t=i/78, ang=-.55+t*1.6;
+    const px=52+t*650+(Math.random()-.5)*46, py=300-Math.sin(t*Math.PI)*190+(Math.random()-.5)*42;
+    const len=5+Math.random()*16, wid=2.4+Math.random()*3.6;
+    x.save(); x.translate(px,py); x.rotate(ang);
+    x.fillStyle="rgba("+(84+Math.random()*34|0)+",16,12,"+(.55+Math.random()*.42)+")";
+    x.beginPath(); x.ellipse(0,0,len,wid,0,0,6.3); x.fill();
+    if(Math.random()<.3){ x.fillStyle="rgba(74,14,10,.5)";
+      x.beginPath(); x.ellipse(len*1.5,0,len*.3,wid*.4,0,0,6.3); x.fill(); }
+    x.restore();
+  }
+});
+const spatter=new THREE.Mesh(new THREE.PlaneGeometry(1.95,1.18),new THREE.MeshBasicMaterial({map:spatterTex,transparent:true}));
+spatter.position.set(-3.90,1.62,-1.50); spatter.rotation.y=Math.PI/2; scene.add(spatter);
+
+const outlineTex=tex(768,448,(x,w,h)=>{
+  x.clearRect(0,0,w,h);
+  x.strokeStyle="rgba(240,236,226,0.8)"; x.lineWidth=7; x.lineCap="round"; x.setLineDash([22,13]);
+  x.beginPath(); x.moveTo(140,214); x.bezierCurveTo(140,158,196,146,222,176);
+  x.lineTo(318,156); x.lineTo(448,170); x.lineTo(586,152); x.lineTo(598,196); x.lineTo(448,224);
+  x.lineTo(586,272); x.lineTo(562,308); x.lineTo(400,280); x.lineTo(316,298); x.lineTo(222,280);
+  x.bezierCurveTo(190,306,140,280,140,214); x.stroke();
+});
+const outline=new THREE.Mesh(new THREE.PlaneGeometry(2.7,1.6),new THREE.MeshBasicMaterial({map:outlineTex,transparent:true}));
+outline.rotation.x=-Math.PI/2; outline.rotation.z=.34; outline.position.set(-2.45,.030,-.85); scene.add(outline);
+
+const meNote=new THREE.Mesh(new THREE.PlaneGeometry(.21,.15),new THREE.MeshBasicMaterial({map:tex(256,180,(x,w,h)=>{
+  x.fillStyle="#e7e2d3"; x.fillRect(0,0,w,h);
+  x.fillStyle="#6a6659"; x.font="bold 15px monospace"; x.fillText("ME FIELD NOTE",12,26);
+  x.fillStyle="#8a8678"; for(let i=0;i<9;i++) x.fillRect(12,40+i*14,60+Math.random()*170,4);
+})}));
+meNote.rotation.x=-Math.PI/2; meNote.rotation.z=-.3; meNote.position.set(-1.45,.034,-.22); scene.add(meNote);
+
+const dragTex=tex(768,192,(x,w,h)=>{
+  x.clearRect(0,0,w,h);
+  const g=x.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(.5,"rgba(220,212,196,0.36)"); g.addColorStop(1,"rgba(0,0,0,0)");
+  x.fillStyle=g; x.fillRect(0,38,w,114);
+  for(let i=0;i<220;i++){ x.fillStyle="rgba(232,224,206,"+(.12+Math.random()*.42)+")";
+    x.fillRect(Math.random()*w,44+Math.random()*104,1+Math.random()*13,1); }
+});
+const dragMat=new THREE.MeshBasicMaterial({map:dragTex,transparent:true,opacity:.15});
+const dragPath=new THREE.Mesh(new THREE.PlaneGeometry(2.55,.64),dragMat);
+dragPath.rotation.x=-Math.PI/2; dragPath.rotation.z=.27; dragPath.position.set(-1.10,.026,.30); scene.add(dragPath);
+
+function proxy(x,y,z,r){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r||.17,10,8),
+    new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+  m.position.set(x,y,z); scene.add(m); return m;
+}
+const cornerHit=proxy(-3.13,.82,-.52), glassHit=proxy(3.84,1.06,.35), mailHit=proxy(3.48,1.38,-2.30,.18);
+
+// approach path lane — revealed once the securing decisions are committed
+const laneTex=tex(256,64,(x,w,h)=>{
+  x.clearRect(0,0,w,h);
+  x.fillStyle="rgba(110,143,118,0.15)"; x.fillRect(0,0,w,h);
+  x.fillStyle="rgba(110,143,118,0.45)"; x.fillRect(0,0,w,3); x.fillRect(0,h-3,w,3);
+});
+laneTex.wrapS=THREE.RepeatWrapping; laneTex.repeat.set(6,1);
+const lane=new THREE.Mesh(new THREE.PlaneGeometry(5.8,0.95),new THREE.MeshBasicMaterial({map:laneTex,transparent:true}));
+lane.rotation.x=-Math.PI/2; lane.position.set(0.35,0.012,-2.42); lane.visible=false; scene.add(lane);
+
+/* ══════════════════════════════════════════════════════════
+   LIGHTING
+   ══════════════════════════════════════════════════════════ */
+const amb=new THREE.AmbientLight(0x5c636e,.42), hemi=new THREE.HemisphereLight(0x8fa0b4,0x3a2c1e,.35);
+scene.add(amb,hemi);
+const ceilLight=new THREE.PointLight(0xffeccb,1.25,17,2);
+ceilLight.position.set(0,RH-.22,0); ceilLight.castShadow=true;
+ceilLight.shadow.mapSize.set(1024,1024); ceilLight.shadow.bias=-.0022; ceilLight.shadow.camera.far=16;
+scene.add(ceilLight);
+const windowLight=new THREE.DirectionalLight(0x9db6d8,.3);
+windowLight.position.set(9,3.2,1.2); windowLight.target.position.set(-1,.6,.4); scene.add(windowLight,windowLight.target);
+const deskLamp=new THREE.PointLight(0xffd79a,.5,5.5,2); deskLamp.position.set(-3.3,1.1,-1.9); scene.add(deskLamp);
+const obliqueLight=new THREE.SpotLight(0xfff6e4,0,13,Math.PI/4.2,.55,1);
+obliqueLight.position.set(2.5,.20,1.3); obliqueLight.target.position.set(-2.1,.03,.05);
+scene.add(obliqueLight,obliqueLight.target);
+
+/* ══════════════════════════════════════════════════════════
+   MARKERS
+   ══════════════════════════════════════════════════════════ */
+const mkCache={};
+function markerTexture(n){
+  if(mkCache[n]) return mkCache[n];
+  mkCache[n]=tex(128,160,(x,w,h)=>{
+    x.fillStyle="#e3c84f"; x.fillRect(0,0,w,h);
+    x.strokeStyle="#9b8528"; x.lineWidth=5; x.strokeRect(2.5,2.5,w-5,h-5);
+    x.fillStyle="#1b1a12"; x.font="bold 92px 'IBM Plex Mono', monospace";
+    x.textAlign="center"; x.textBaseline="middle"; x.fillText(String(n),w/2,h/2+6);
+  });
+  return mkCache[n];
+}
+function makeMarker(n,pos){
+  const g=new THREE.Group();
+  const face=new THREE.Mesh(new THREE.PlaneGeometry(.095,.12),
+    new THREE.MeshStandardMaterial({map:markerTexture(n),side:THREE.DoubleSide,roughness:.75}));
+  face.position.set(0,.058,.022); face.rotation.x=-.26; face.castShadow=true;
+  const back=new THREE.Mesh(new THREE.PlaneGeometry(.095,.12),
+    new THREE.MeshStandardMaterial({color:0xcbb249,side:THREE.DoubleSide,roughness:.8}));
+  back.position.set(0,.058,-.022); back.rotation.x=.26;
+  const foot=new THREE.Mesh(new THREE.BoxGeometry(.095,.004,.07),
+    new THREE.MeshStandardMaterial({color:0xbda33f,roughness:.85}));
+  g.add(face,back,foot); g.position.copy(pos); g.position.y+=.002; scene.add(g); return g;
+}
+const markerPreview=new THREE.Mesh(new THREE.RingGeometry(.07,.095,20),
+  new THREE.MeshBasicMaterial({color:0xd9c15a,side:THREE.DoubleSide,transparent:true,opacity:.75}));
+markerPreview.rotation.x=-Math.PI/2; markerPreview.visible=false; scene.add(markerPreview);
+
+const NEAR_FEATURES = {
+  H1:new THREE.Vector3(1.62,.20,2.32),
+  H2:new THREE.Vector3(3.48,1.38,-2.30),
+  ME:new THREE.Vector3(-1.45,.03,-.22)
+};
+function placeMarker(pos){
+  let best=null,bestD=0.80;
+  for(const k of EVIDENCE_KEYS){
+    if(S.ev[k].marker!==null) continue;
+    const d=pos.distanceTo(new THREE.Vector3().fromArray(CASE.items[k].shot.at));
+    if(d<bestD){ bestD=d; best=k; }
+  }
+  let near=null;
+  if(!best) for(const k in NEAR_FEATURES) if(pos.distanceTo(NEAR_FEATURES[k])<0.9){ near=k; break; }
+  const n=S.nextMarker++;
+  makeMarker(n,pos);
+  S.markers.push({n,pos:pos.clone(),item:best,near});
+  if(best) S.ev[best].marker=n;
+  else if(!near){ S.strays++; S.flags.push("Marker "+n+" placed with no feature of any kind within reach"); }
+  renderRail(); updatePhaseUI();
+  return {n,item:best,near};
+}
+
+/* ══════════════════════════════════════════════════════════
+   HOTSPOTS
+   ══════════════════════════════════════════════════════════ */
+const hot=[];
+function hotspot(mesh,key){ mesh.userData.key=key; hot.push({mesh,key});
+  if(HINTS){ const r=new THREE.Mesh(new THREE.RingGeometry(.15,.19,16),
+    new THREE.MeshBasicMaterial({color:0xc9a227,side:THREE.DoubleSide,transparent:true,opacity:.65}));
+    mesh.updateMatrixWorld(true); r.position.copy(mesh.getWorldPosition(new THREE.Vector3()));
+    r.position.y+=.55; scene.add(r); } }
+hotspot(spatter,"E1"); hotspot(glassHit,"E2"); hotspot(dragPath,"E3");
+hotspot(cornerHit,"E4"); hotspot(lampShade,"H1"); hotspot(meNote,"ME"); hotspot(mailHit,"H2");
+
+/* ══════════════════════════════════════════════════════════
+   CONTROLS
+   ══════════════════════════════════════════════════════════ */
+let yaw=Math.PI, pitch=0, locked=false, dragging=false, lastX=0, lastY=0, moved=false;
+const keys={}; const cv=renderer.domElement;
+addEventListener("keydown",e=>{
+  keys[e.code]=true;
+  if(S.phase==="brief"||S.phase==="secure"||S.phase==="done") return;
+  if(e.code==="KeyE"){ if(pendingShot) doCapture(); else if(S.markerMode) tryPlace(); else tryInteract(); }
+  if(e.code==="KeyL") toggleOblique();
+  if(e.code==="KeyM") toggleMarkerMode();
+  if(e.code==="KeyP"&&!locked) cv.requestPointerLock();
+  if(e.code==="Escape"){ if(pendingShot){ const p=pendingShot; pendingShot=null; setPrompt("");
+      openScrim(p.ov?"#scrimOveralls":"#scrimItem"); } else if(S.markerMode) toggleMarkerMode(); }
+  if(["KeyW","KeyA","KeyS","KeyD","Space"].includes(e.code)) e.preventDefault();
+});
+addEventListener("keyup",e=>{keys[e.code]=false;});
+document.addEventListener("pointerlockchange",()=>{locked=document.pointerLockElement===cv;});
+cv.addEventListener("mousedown",e=>{dragging=true;moved=false;lastX=e.clientX;lastY=e.clientY;});
+addEventListener("mouseup",()=>{dragging=false;});
+addEventListener("mousemove",e=>{
+  if(locked) look(e.movementX,e.movementY);
+  else if(dragging){ moved=true; look(e.clientX-lastX,e.clientY-lastY); lastX=e.clientX; lastY=e.clientY; }
+});
+cv.addEventListener("click",()=>{ if(moved) return;
+  if(pendingShot) doCapture(); else if(S.markerMode) tryPlace(); else tryInteract(); });
+cv.addEventListener("touchstart",e=>{dragging=true;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;},{passive:true});
+cv.addEventListener("touchmove",e=>{ if(!dragging)return;
+  look(e.touches[0].clientX-lastX,e.touches[0].clientY-lastY);
+  lastX=e.touches[0].clientX; lastY=e.touches[0].clientY; },{passive:true});
+cv.addEventListener("touchend",()=>{dragging=false;});
+function look(dx,dy){ if(S.phase==="brief"||S.phase==="secure"||S.phase==="done")return;
+  yaw-=dx*.0031; pitch=Math.max(-1.35,Math.min(1.35,pitch-dy*.0031)); }
+function collide(nx,nz){
+  nx=Math.max(-RW+.34,Math.min(RW-.34,nx)); nz=Math.max(-RD+.34,Math.min(RD-.34,nz));
+  for(const c of colliders) if(nx>c.x0&&nx<c.x1&&nz>c.z0&&nz<c.z1){
+    const dl=Math.abs(nx-c.x0),dr=Math.abs(nx-c.x1),db=Math.abs(nz-c.z0),df=Math.abs(nz-c.z1);
+    const m=Math.min(dl,dr,db,df);
+    if(m===dl)nx=c.x0; else if(m===dr)nx=c.x1; else if(m===db)nz=c.z0; else nz=c.z1;
+  }
+  return [nx,nz];
+}
+
+/* ── sterile zone tracking ── */
+const zoneIn = CASE.sterile.map(()=>false);
+function checkZones(){
+  if(S.phase!=="walkthrough"&&S.phase!=="document") return;
+  CASE.sterile.forEach((z,i)=>{
+    const d=Math.hypot(player.position.x-z.c[0], player.position.z-z.c[1]);
+    if(d<z.r && !zoneIn[i]){
+      zoneIn[i]=true;
+      S.contam.push({zone:z.n,t:stamp(),phase:S.phase});
+      S.flags.push("Technician walked through "+z.n+" at "+stamp());
+      setPrompt("<b>Off the approach path.</b> You just walked through "+z.n+
+        ". Any footwear impression or transfer there is now arguably yours. Logged.","alarm");
+      renderRail(); updatePhaseUI();
+      setTimeout(()=>{ const p=document.getElementById("prompt");
+        if(p.classList.contains("alarm")) setPrompt(""); },5000);
+    } else if(d>z.r+0.25) zoneIn[i]=false;
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   AIM / INTERACTION
+   ══════════════════════════════════════════════════════════ */
+const ray=new THREE.Raycaster(), centre=new THREE.Vector2(0,0);
+const _camPos=new THREE.Vector3(),_fwd=new THREE.Vector3(),_obj=new THREE.Vector3(),
+      _v=new THREE.Vector3(),_d=new THREE.Vector3();
+let aimed=null, placePoint=null, dbgEl=null;
+if(DEBUG){ dbgEl=document.createElement("div");
+  dbgEl.style.cssText="position:fixed;left:0;top:2.6rem;background:#111;color:#8f8;font:11px monospace;padding:.5rem;white-space:pre;z-index:50;pointer-events:none";
+  document.body.appendChild(dbgEl); }
+
+function updateAim(){
+  aimed=null; placePoint=null;
+  const ret=document.getElementById("reticle");
+  if(S.phase==="brief"||S.phase==="secure"||S.phase==="done"){ setPrompt(""); return; }
+  scene.updateMatrixWorld(true);
+  camera.getWorldPosition(_camPos); camera.getWorldDirection(_fwd);
+  ray.setFromCamera(centre,camera);
+
+  if(S.markerMode){
+    markerPreview.visible=false;
+    const hits=ray.intersectObjects(occluders,false);
+    if(hits.length&&hits[0].distance<4.0){
+      placePoint=hits[0].point.clone();
+      markerPreview.position.copy(placePoint).add(new THREE.Vector3(0,.004,0));
+      markerPreview.visible=true;
+    }
+    ret.className=placePoint?"place":"";
+    setPrompt(placePoint?'<b>Marker '+S.nextMarker+'</b> — <kbd>E</kbd> or click to place · <kbd>M</kbd> to exit marker mode'
+      :'Marker mode — aim at a surface beside an item of evidence',"marker");
+    return;
+  }
+  markerPreview.visible=false;
+
+  const live=hot.filter(h=>h.mesh.visible);
+  const hits=ray.intersectObjects(live.map(h=>h.mesh),false);
+  if(hits.length&&hits[0].distance<3.4) aimed=hits[0].object.userData.key;
+  if(!aimed){
+    let bestD=Infinity;
+    for(const h of live){
+      h.mesh.getWorldPosition(_obj);
+      const d=_obj.distanceTo(_camPos), dot=_obj.clone().sub(_camPos).normalize().dot(_fwd);
+      if(d<2.0&&dot>.55&&d<bestD){ bestD=d; aimed=h.key; }
+    }
+  }
+  if(DEBUG){ let s="";
+    for(const h of live){ h.mesh.getWorldPosition(_obj);
+      s+=h.key+" d="+_obj.distanceTo(_camPos).toFixed(2)+(S.observed.has(h.key)?" [noted]":"")+"\n"; }
+    dbgEl.textContent=BUILD+"\n"+s+"aimed: "+(aimed||"none"); }
+
+  ret.className=aimed?"hot":"";
+  if(aimed){
+    const it=CASE.items[aimed], seen=S.observed.has(aimed);
+    setPrompt(S.phase==="walkthrough"
+      ? (seen?"Noted: ":"")+"<b>"+it.name+"</b> — <kbd>E</kbd> to examine"
+      : "<b>"+it.name+"</b> — <kbd>E</kbd> to open the documentation sheet");
+  } else setPrompt("");
+}
+function tryPlace(){
+  if(!placePoint) return;
+  if(S.phase!=="document"){ setPrompt("Markers go in after the walkthrough.","marker"); return; }
+  if(!allOveralls()){ setPrompt("<b>Overall photographs are not complete.</b> A marker changes the scene — the overalls have to record it undisturbed first.","alarm"); return; }
+  const r=placeMarker(placePoint);
+  setPrompt(r.item?'<b>Marker '+r.n+'</b> placed at '+CASE.items[r.item].id+'. Now shoot the midrange, then the close-up.'
+    :r.near?'<b>Marker '+r.n+'</b> placed at '+CASE.items[r.near].name.toLowerCase()+'. Noted — but think about whether it belongs in the evidence numbering.'
+    :'<b>Marker '+r.n+'</b> placed — nothing of any kind is within reach of it. Logged.',"marker");
+}
+function tryInteract(){
+  if(!aimed) return;
+  const key=aimed, it=CASE.items[key];
+  if(!S.observed.has(key)){ S.observed.add(key); renderRail(); updatePhaseUI(); }
+  if(S.phase==="walkthrough"||it.kind!=="evidence") openNote(key); else openItem(key);
+}
+function toggleOblique(){
+  S.obliqueOn=!S.obliqueOn;
+  obliqueLight.intensity=S.obliqueOn?2.1:0;
+  ceilLight.intensity=S.obliqueOn?.14:1.25;
+  deskLamp.intensity=S.obliqueOn?.08:.5;
+  amb.intensity=S.obliqueOn?.14:.42;
+  hemi.intensity=S.obliqueOn?.1:.35;
+  dragMat.opacity=S.obliqueOn?1:.15;
+  document.getElementById("btnLight").classList.toggle("on",S.obliqueOn);
+}
+function toggleMarkerMode(){
+  if(S.phase!=="document") return;
+  S.markerMode=!S.markerMode;
+  document.getElementById("btnMarker").classList.toggle("on",S.markerMode);
+  if(!S.markerMode){ markerPreview.visible=false; setPrompt(""); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   PHOTOGRAPH VALIDATION
+   ══════════════════════════════════════════════════════════ */
+const LANDMARKS=[
+  {p:new THREE.Vector3(2.0,1.2,-3.0)},{p:new THREE.Vector3(4.0,1.5,0)},
+  {p:new THREE.Vector3(-3.58,.76,-1.5)},{p:new THREE.Vector3(-2.45,.05,-.85)},
+  {p:new THREE.Vector3(-3.70,1.0,1.2)},{p:new THREE.Vector3(3.48,.65,-2.3)}
+];
+const shotRay=new THREE.Raycaster();
+function inFrame(p,m){ _v.copy(p).project(camera); return _v.z<1&&Math.abs(_v.x)<m&&Math.abs(_v.y)<m; }
+function framedLandmarks(){ return LANDMARKS.filter(l=>inFrame(l.p,.95)); }
+function anyMarkerPlaced(){ return S.markers.length>0; }
+function allOveralls(){ return CASE.overalls.every(o=>S.ov[o.id].img); }
+
+function judgeOverall(ovId){
+  const ov=CASE.overalls.find(o=>o.id===ovId);
+  if(anyMarkerPlaced()) return {why:"Markers are already in the scene.",
+    fix:"Overall photographs record the room as you found it. Once a marker is down, no photograph you take can show an undisturbed scene — and on a real scene that is not recoverable."};
+  if(S.obliqueOn) return {why:"The room is lit by the oblique light.",
+    fix:"Oblique light is a search tool. An overall taken under it is a dark frame with one bright streak across the floor. Turn the room lights back on."};
+  const d=Math.hypot(player.position.x-ov.at[0], player.position.z-ov.at[1]);
+  if(d>1.30) return {why:"You are not standing at that corner.",
+    fix:"This frame belongs to "+ov.name.split("— ")[1]+" — about "+d.toFixed(1)+" m from where you are now. Four corners, four overlapping views: that is what makes the set a record of the room rather than four photographs of the same thing."};
+  const lm=framedLandmarks();
+  if(lm.length<3) return {why:"Not enough of the room is in frame.",
+    fix:"An overall has to carry the whole room, not a piece of it. Only "+lm.length+" fixed feature"+(lm.length===1?" is":"s are")+
+        " visible here. Turn to face across the room and take in at least three."};
+  return null;
+}
+
+function judgeShot(key,kind){
+  const it=CASE.items[key], sh=it.shot, e=S.ev[key];
+  const at=new THREE.Vector3().fromArray(sh.at);
+  camera.getWorldPosition(_camPos); camera.getWorldDirection(_fwd);
+  const dist=at.distanceTo(_camPos);
+
+  if(!inFrame(at,.90)) return {why:"The subject is not in the frame.",
+    fix:"Point the camera at "+it.name.toLowerCase()+" before you capture. A photograph that does not contain the evidence is not documentation of it."};
+  _d.copy(at).sub(_camPos).normalize(); shotRay.set(_camPos,_d); shotRay.far=dist-.06;
+  if(shotRay.intersectObjects(occluders,false).length) return {why:"Something is between the camera and the subject.",
+    fix:"Move so you have a clear line of sight. An obstructed frame documents the obstruction, not the evidence."};
+  if(sh.light==="oblique"&&!S.obliqueOn) return {why:"The subject is not visible under this lighting.",
+    fix:"Crushed nap and fibre detail only render under low-angle light. Turn the oblique light on, or this frame records an empty rug."};
+  if(sh.light==="room"&&S.obliqueOn) return {why:"The frame is badly underexposed.",
+    fix:"Oblique light is a search tool, not a documentation light. Turn the room light back on so colour and detail survive to the lab."};
+  if(e.marker===null) return {why:"No evidence marker at this item.",
+    fix:"Place the numbered marker first. That number is what ties this photograph to the entry in the log, to the sketch, and to whoever collects this item on the next shift."};
+
+  const mk=S.markers.find(m=>m.n===e.marker);
+  const half=(sh.r/dist)/Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+
+  if(kind==="mid"){
+    if(dist<1.0) return {why:"Too close for a midrange.",
+      fix:"You are "+dist.toFixed(1)+" m away. A midrange has one job: show this item in relation to something fixed in the room, so a reader who was never here can place it. Back up."};
+    if(dist>2.4) return {why:"Too far for a midrange.",
+      fix:"At "+dist.toFixed(1)+" m this is another overall. A midrange sits between the room and the item — close enough that the item is clearly the subject, far enough that its surroundings are still readable."};
+    if(framedLandmarks().length<1) return {why:"No fixed reference in the frame.",
+      fix:"Nothing in this frame locates the item. Reframe so a fixed feature of the room — the doorway, the window, the desk, the cabinet — appears alongside it."};
+    if(mk&&!inFrame(mk.pos,.90)) return {why:"Marker "+e.marker+" is not in the frame.",
+      fix:"The marker has to appear in the midrange too. It is the thread running from the overall, through this frame, to the close-up."};
+  }
+
+  if(kind==="close"){
+    const closeMax = sh.closeMax || 1.1;
+    if(dist>closeMax) return {why:"Too far away for a close-up.",
+      fix:"You are "+dist.toFixed(1)+" m away"+(sh.floor?", measured from the camera down to the floor":"")+
+          ". Move in until the item fills the frame. A scale reference is worthless if the item is thirty pixels across."};
+    if(half<.15) return {why:"The subject is too small in the frame.",
+      fix:"The item occupies almost none of the image. Close the distance or aim more directly at it."};
+    if(Math.abs(_v.x)>.42||Math.abs(_v.y)>.42) return {why:"The subject is off at the edge of the frame.",
+      fix:"Centre the item. Edge-of-frame lens distortion makes any measurement taken from this photograph unreliable."};
+    if(sh.normal){
+      const n=new THREE.Vector3().fromArray(sh.normal);
+      if(-_fwd.dot(n)<sh.square) return {why:"The camera is not square to "+sh.surface+".",
+        fix:"Shooting a flat pattern at an angle foreshortens it — every stain and every measurement in this frame is distorted. Get the film plane parallel to "+sh.surface+" and shoot straight on."};
+    }
+    if(mk&&!inFrame(mk.pos,.88)) return {why:"Marker "+e.marker+" is not in the frame.",
+      fix:"The marker has to appear in the close-up. A close-up with no marker in it cannot be matched to anything later — it is just a picture of a stain."};
+  }
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════════
+   CAPTURE
+   ══════════════════════════════════════════════════════════ */
+function stamp(d){ d=d||new Date(); return d.toTimeString().slice(0,8); }
+function capture(withScale,label){
+  renderer.render(scene,camera);
+  const src=renderer.domElement, c=document.createElement("canvas");
+  const W=520,H=Math.round(W*src.height/src.width);
+  c.width=W; c.height=H;
+  const x=c.getContext("2d");
+  x.drawImage(src,0,0,W,H);
+  x.fillStyle="rgba(0,0,0,.66)"; x.fillRect(0,H-22,W,22);
+  x.fillStyle="#e6e2d9"; x.font="11px monospace";
+  x.fillText("26-0417  "+(label||"")+"  "+stamp()+"  "+(S.tech||"TECH"),6,H-7);
+  if(withScale){
+    const bx=W-140,by=H-54;
+    x.fillStyle="#f3eee2"; x.fillRect(bx,by,128,15);
+    x.fillStyle="#17171a";
+    for(let i=0;i<6;i+=2) x.fillRect(bx+i*21,by,21,8);
+    for(let i=1;i<6;i+=2) x.fillRect(bx+i*21,by+7,21,8);
+    x.font="9px monospace"; x.fillText("10 cm",bx+48,by-4);
+  }
+  return c.toDataURL("image/png");
+}
+let pendingShot=null;
+function doCapture(){
+  const p=pendingShot; pendingShot=null; setPrompt("");
+  if(p.ov){
+    const rec=S.ov[p.key], bad=judgeOverall(p.key);
+    const img=capture(false,p.key);
+    if(bad){ rec.rejects.push({why:bad.why,t:stamp()}); rec.lastReject={why:bad.why,fix:bad.fix,img};
+      S.flags.push(p.key+": frame rejected — "+bad.why.replace(/\.$/,"")); }
+    else { rec.img=img; rec.t=stamp(); rec.lastReject=null; }
+    drawOveralls(); openScrim("#scrimOveralls");
+  } else {
+    const e=S.ev[p.key], bad=judgeShot(p.key,p.kind);
+    const img=capture(p.kind==="close"&&!bad, CASE.items[p.key].id);
+    if(bad){ e.rejects.push({kind:p.kind,why:bad.why,t:stamp()}); e.lastReject={kind:p.kind,why:bad.why,fix:bad.fix,img};
+      S.flags.push(CASE.items[p.key].id+": frame rejected — "+bad.why.replace(/\.$/,"")); }
+    else { e.shots[p.kind]={img,t:stamp()}; e.lastReject=null; }
+    openKey=p.key; drawItem(); openScrim("#scrimItem");
+  }
+  renderRail(); updatePhaseUI();
+}
+function beginShot(opts){
+  closeScrim("#scrimItem"); closeScrim("#scrimOveralls");
+  if(S.markerMode) toggleMarkerMode();
+  setPrompt("Frame the shot, then <kbd>E</kbd> or click to capture. <kbd>Esc</kbd> to cancel.");
+  pendingShot=opts;
+}
+
+/* ══════════════════════════════════════════════════════════
+   UI
+   ══════════════════════════════════════════════════════════ */
+const $=s=>document.querySelector(s);
+function setPrompt(html,cls){ const p=$("#prompt"); p.innerHTML=html; p.className=(html?"show ":"")+(cls||""); }
+function openScrim(id){ $(id).classList.add("open"); if(document.exitPointerLock) document.exitPointerLock(); }
+function closeScrim(id){ $(id).classList.remove("open"); }
+function modalOpen(){ return [...document.querySelectorAll(".scrim")].some(s=>s.classList.contains("open")); }
+
+function updatePhaseUI(){
+  const lbl=$("#phaselabel"), total=Object.keys(CASE.items).length, n=S.observed.size;
+  $("#btnMarker").disabled = S.phase!=="document";
+  $("#btnOveralls").disabled = S.phase!=="document";
+  const ovDone=CASE.overalls.filter(o=>S.ov[o.id].img).length;
+  if(S.phase==="secure"){
+    lbl.innerHTML="Securing the scene<small>Four decisions before entry</small>";
+    $("#btnAdvance").disabled=true;
+  } else if(S.phase==="walkthrough"){
+    lbl.innerHTML="Initial walkthrough<small>Observe only. "+n+" of "+total+" features noted. Stay on the approach path.</small>";
+    $("#btnAdvance").disabled=n<total;
+    $("#btnAdvance").textContent=n<total?"Complete walkthrough ("+n+"/"+total+")":"Complete walkthrough";
+  } else if(S.phase==="document"){
+    const marked=EVIDENCE_KEYS.filter(k=>S.ev[k].marker!==null).length;
+    const shot=EVIDENCE_KEYS.filter(k=>S.ev[k].shots.mid&&S.ev[k].shots.close).length;
+    lbl.innerHTML="Marking and photographing<small>Overalls "+ovDone+"/4 · "+marked+"/"+EVIDENCE_KEYS.length+
+      " marked · "+shot+"/"+EVIDENCE_KEYS.length+" fully photographed</small>";
+    $("#btnAdvance").disabled=false; $("#btnAdvance").textContent="Release the scene";
+  }
+  $("#railcount").textContent = S.contam.length? S.contam.length+" contamination" : "";
+}
+
+function renderRail(){
+  const list=$("#raillist"); list.innerHTML="";
+  const sec=t=>{ const d=document.createElement("div"); d.className="railsec"; d.textContent=t; list.appendChild(d); };
+  sec("Overall photographs");
+  CASE.overalls.forEach(o=>{
+    const r=S.ov[o.id], d=document.createElement("div"); d.className="railitem";
+    const st=r.img?"Captured "+r.t:(r.rejects.length?r.rejects.length+" rejected":"Not taken");
+    d.innerHTML='<span class="id">'+o.id+'</span><span class="nm">'+o.name.replace("Overall — ","")+
+      '</span><span class="st '+(r.img?"ok":(r.rejects.length?"bad":""))+'">'+st+'</span>';
+    list.appendChild(d);
+  });
+  sec("Scene features");
+  for(const k in CASE.items){
+    const it=CASE.items[k], seen=S.observed.has(k), e=S.ev[k];
+    const d=document.createElement("div"); d.className="railitem"+(seen?"":" undisc");
+    let status,cls="";
+    if(!seen) status="Not yet examined";
+    else if(!e) status="Noted — not evidence";
+    else {
+      const s=[]; if(e.shots.mid)s.push("midrange"); if(e.shots.close)s.push("close-up");
+      if(e.marker===null) status="Noted, unmarked";
+      else if(s.length===2){ status="Marked and documented"; cls="ok"; }
+      else status = s.length? "Marked · "+s.join(", ") : "Marked, not photographed";
+      if(e.rejects.length){ status+=" · "+e.rejects.length+" rejected"; if(s.length<2) cls="bad"; }
+    }
+    d.innerHTML=(e&&e.marker!==null?'<span class="mk">#'+e.marker+'</span>':'')+
+      '<span class="id">'+(seen?it.id:"—")+'</span>'+
+      '<span class="nm">'+(seen?it.name:"Unexamined feature")+'</span>'+
+      '<span class="st '+cls+'">'+status+'</span>';
+    list.appendChild(d);
+  }
+}
+
+/* ── securing sheet ── */
+function drawSecure(){
+  let h='<div id="namebar"><input id="techName" placeholder="Your name" value="'+S.tech+'">'+
+        '<input id="techPartner" placeholder="Partner name (optional)" value="'+S.partner+'"></div>';
+  CASE.securing.forEach((q,i)=>{
+    const tries=S.secureTries[i], solved=tries.some(t=>t.ok);
+    h+='<div class="qblock"><h3>'+(i+1)+'. '+q.q+'</h3><p class="situ">'+q.situ+'</p>';
+    const lastBad=tries.length&&!tries[tries.length-1].ok?tries[tries.length-1]:null;
+    if(lastBad&&!solved) h+='<div class="reject"><div class="rhead">Not that one</div>'+
+      '<div class="rbody" style="display:block"><p>'+q.opts[lastBad.i].why+'</p></div></div>';
+    if(solved){ const ci=q.opts.findIndex(o=>o.ok);
+      h+='<div class="okbar">'+q.opts[ci].t+'</div>'; }
+    else { h+='<div class="opts">';
+      q.opts.forEach((o,j)=>{ const bad=tries.some(t=>t.i===j&&!t.ok);
+        h+='<label'+(bad?' class="tried"':'')+'><input type="radio" name="q'+i+'" value="'+j+'"'+
+           (bad?' disabled':'')+'><span>'+o.t+(bad?' <em>— rejected</em>':'')+'</span></label>'; });
+      h+='</div>'; }
+    h+='</div>';
+  });
+  $("#secureBody").innerHTML=h;
+  $("#secureSubmit").textContent = CASE.securing.every((q,i)=>S.secureTries[i].some(t=>t.ok))
+    ? "Enter the scene" : "Commit these decisions";
+}
+
+/* ── note sheet ── */
+function openNote(key){
+  const it=CASE.items[key];
+  $("#itemTitle").textContent=it.name;
+  $("#itemSub").textContent=it.id+" · observed "+stamp();
+  let h='<div class="tag"><div class="tid">'+it.id+'</div><div class="tnm">'+it.name+'</div><p class="tdesc">'+it.desc+'</p></div>';
+  if(it.body) h+='<p>'+it.body+'</p>';
+  if(S.phase==="walkthrough") h+='<div class="warnbar">Walkthrough in progress. Note it, do not touch it, do not mark it, do not photograph it. Everything unlocks once every feature in the room has been observed.</div>';
+  else if(it.kind==="herring") h+='<div class="mkbar">You may mark and photograph this if you judge it relevant. Nothing is lost by over-documenting — but every number you issue is a number you will be asked to justify.</div>';
+  $("#itemBody").innerHTML=h; openScrim("#scrimItem");
+}
+
+/* ── overalls sheet ── */
+function drawOveralls(){
+  let h='<p>Four overall photographs, one from each corner, taken before any marker enters the room. Together they have to let someone who was never here reconstruct the layout of this study and the position of everything in it.</p>';
+  if(anyMarkerPlaced()) h+='<div class="warnbar"><b>Markers are already in the scene.</b> Any overall taken from here on records a room that has already been altered. On a real scene that cannot be undone.</div>';
+  CASE.overalls.forEach(o=>{
+    const r=S.ov[o.id];
+    h+='<div class="step"><h3>'+o.name+'</h3><p class="hint">'+o.desc+'</p>';
+    if(r.lastReject) h+='<div class="reject"><div class="rhead">Frame rejected — '+r.lastReject.why+'</div>'+
+      '<div class="rbody"><img src="'+r.lastReject.img+'"><p>'+r.lastReject.fix+'</p></div></div>';
+    h+='<div class="shots"><button class="btn" data-ov="'+o.id+'"><span class="dot'+(r.img?' done':'')+'"></span>'+
+       (r.img?'Retake':'Capture')+'</button></div>';
+    if(r.img) h+='<div class="thumbs"><figure><img src="'+r.img+'"><figcaption>'+o.id+' · '+r.t+'</figcaption></figure></div>';
+    h+='</div>';
+  });
+  $("#ovBody").innerHTML=h;
+  $("#ovBody").querySelectorAll("[data-ov]").forEach(b=>
+    b.addEventListener("click",()=>beginShot({ov:true,key:b.dataset.ov})));
+}
+
+/* ── item sheet ── */
+let openKey=null;
+function openItem(key){ openKey=key;
+  $("#itemTitle").textContent=CASE.items[key].name;
+  $("#itemSub").textContent=CASE.items[key].id+" · case 26-0417";
+  drawItem(); openScrim("#scrimItem"); }
+
+function drawItem(){
+  const key=openKey, it=CASE.items[key], e=S.ev[key];
+  let h='<div class="tag"><div class="tid">'+it.id+(e.marker!==null?' · <b>marker '+e.marker+'</b>':'')+
+        '</div><div class="tnm">'+it.name+'</div><p class="tdesc">'+it.desc+'</p></div>';
+  if(it.guide) h+='<div class="mkbar">'+it.guide+'</div>';
+  if(e.lastReject){ const r=e.lastReject;
+    h+='<div class="reject"><div class="rhead">Frame rejected — '+r.why+'</div><div class="rbody">'+
+       '<img src="'+r.img+'" alt="The rejected frame"><p>'+r.fix+'</p></div></div>'; }
+
+  h+='<div class="step"><h3><span class="num">1</span>Place the evidence marker</h3>';
+  if(e.marker!==null) h+='<div class="okbar">Marker '+e.marker+' is in place at this item.</div>';
+  else if(!allOveralls()) h+='<p class="hint">The four overall photographs come first. A marker placed now means no photograph can ever show this room undisturbed.</p>';
+  else h+='<p class="hint">Close this sheet, press <kbd>M</kbd> for marker mode, aim at the surface beside the item and place it. Both photographs below are refused until it is down.</p>';
+  h+='</div>';
+
+  h+='<div class="step"><h3><span class="num">2</span>Midrange</h3>'+
+     '<p class="hint">Between 1.0 and 2.4 m, with the marker and at least one fixed feature of the room in frame. This is the photograph that proves where in the study this item was.</p>'+
+     '<div class="shots"><button class="btn" data-shot="mid"><span class="dot'+(e.shots.mid?' done':'')+'"></span>'+
+     (e.shots.mid?'Retake midrange':'Capture midrange')+'</button></div>';
+  if(e.shots.mid) h+='<div class="thumbs"><figure><img src="'+e.shots.mid.img+'"><figcaption>midrange · '+e.shots.mid.t+'</figcaption></figure></div>';
+  h+='</div>';
+
+  h+='<div class="step"><h3><span class="num">3</span>Close-up with scale</h3>'+
+     '<p class="hint">Within 1.1 m, centred, square to the surface, marker visible. A scale is burned into the frame automatically when the shot is accepted.</p>'+
+     '<div class="shots"><button class="btn" data-shot="close"><span class="dot'+(e.shots.close?' done':'')+'"></span>'+
+     (e.shots.close?'Retake close-up':'Capture close-up')+'</button></div>';
+  if(e.shots.close) h+='<div class="thumbs"><figure><img src="'+e.shots.close.img+'"><figcaption>close-up · '+e.shots.close.t+'</figcaption></figure></div>';
+  h+='</div>';
+
+  if(e.shots.mid&&e.shots.close)
+    h+='<div class="okbar"><b>'+it.id+' is fully documented.</b> Marker, midrange, close-up with scale. Whoever collects this item on the next shift can now do so knowing exactly what it looked like, where it sat, and how big it was.</div>';
+
+  $("#itemBody").innerHTML=h;
+  $("#itemBody").querySelectorAll("[data-shot]").forEach(b=>
+    b.addEventListener("click",()=>beginShot({key, kind:b.dataset.shot})));
+}
+
+/* ── conclusion + report ── */
+function openConclusion(){
+  let h='<div class="step" style="border:0;margin:0;padding:0"><h3>Taken together, this scene is:</h3><div class="opts">';
+  CASE.conclusions.forEach((c,i)=>{ h+='<label><input type="radio" name="cc" value="'+i+'"><span>'+c.t+'</span></label>'; });
+  h+='</div></div><div class="step"><h3>Which findings support that? Choose three.</h3><div class="opts">';
+  CASE.findings.forEach((f,i)=>{ h+='<label><input type="checkbox" name="ff" value="'+i+'"><span>'+f.t+'</span></label>'; });
+  h+='</div></div>';
+  $("#concBody").innerHTML=h; openScrim("#scrimConc");
+}
+function buildReport(){
+  const conc=$("#concBody").querySelector('input[name="cc"]:checked');
+  const picks=[...$("#concBody").querySelectorAll('input[name="ff"]:checked')].map(e=>+e.value);
+  S.conc=conc?+conc.value:null; S.picks=picks;
+
+  const sc={secure:0, ov:0, mark:0, photo:0};
+  S.secureTries.forEach(tries=>{
+    if(!tries.some(t=>t.ok)) return;
+    const wrong=tries.filter(t=>!t.ok).length;
+    sc.secure += wrong===0?5:(wrong===1?3:1);
+  });
+  CASE.overalls.forEach(o=>{ const r=S.ov[o.id]; if(r.img) sc.ov+=Math.max(0,5-r.rejects.length); });
+  EVIDENCE_KEYS.forEach(k=>{ const e=S.ev[k];
+    if(e.marker!==null) sc.mark+=5;
+    sc.photo+=Math.max(0,(e.shots.mid?5:0)+(e.shots.close?5:0)-e.rejects.length*2); });
+  sc.mark=Math.max(0, sc.mark-S.strays*5);
+  sc.conc=(S.conc!==null&&CASE.conclusions[S.conc].ok)?15:0;
+  const good=picks.filter(i=>CASE.findings[i].ok).length;
+  sc.find=Math.max(0,good*5-(picks.length-good)*5);
+  sc.contam=-5*S.contam.length;
+
+  const maxSecure=CASE.securing.length*5, maxOv=CASE.overalls.length*5,
+        maxMark=EVIDENCE_KEYS.length*5, maxPhoto=EVIDENCE_KEYS.length*10;
+  sc.max=maxSecure+maxOv+maxMark+maxPhoto+15+15;
+  sc.total=Math.max(0, sc.secure+sc.ov+sc.mark+sc.photo+sc.find+sc.conc+sc.contam);
+  sc.pct=Math.round(sc.total/sc.max*100);
+  S.score=sc;
+
+  let h='<div class="scoregrid">'+
+    '<div>Securing the scene</div><div class="v">'+sc.secure+' / '+maxSecure+'</div>'+
+    '<div>Overall photographs</div><div class="v">'+sc.ov+' / '+maxOv+'</div>'+
+    '<div>Evidence marking</div><div class="v">'+sc.mark+' / '+maxMark+'</div>'+
+    '<div>Midrange and close-up photographs</div><div class="v">'+sc.photo+' / '+maxPhoto+'</div>'+
+    '<div>Findings selected</div><div class="v">'+sc.find+' / 15</div>'+
+    '<div>Scene interpretation</div><div class="v">'+sc.conc+' / 15</div>'+
+    (S.contam.length?'<div class="pen">Scene contamination ('+S.contam.length+')</div><div class="v pen">'+sc.contam+'</div>':'')+
+    '<div class="tot">Total</div><div class="v tot">'+sc.total+' / '+sc.max+' &nbsp;('+sc.pct+'%)</div></div>';
+
+  h+='<table class="log"><thead><tr><th>Ref</th><th>Marker</th><th>Description</th>'+
+     '<th>Frames accepted</th><th>Frames rejected</th></tr></thead><tbody>';
+  CASE.overalls.forEach(o=>{ const r=S.ov[o.id];
+    h+='<tr><td class="mono">'+o.id+'</td><td>—</td><td>'+o.name+'</td>'+
+       '<td>'+(r.img?'overall · '+r.t:'<span class="flag">not taken</span>')+'</td>'+
+       '<td'+(r.rejects.length?' class="flag"':'')+'>'+(r.rejects.length?r.rejects.map(x=>x.why).join('<br>'):'—')+'</td></tr>'; });
+  EVIDENCE_KEYS.forEach(k=>{ const it=CASE.items[k], e=S.ev[k], s=Object.keys(e.shots);
+    h+='<tr><td class="mono">'+it.id+'</td>'+
+       '<td class="mono">'+(e.marker!==null?e.marker:'<span class="flag">none</span>')+'</td>'+
+       '<td>'+it.name+'</td>'+
+       '<td>'+(s.length?s.join(", "):'<span class="flag">none</span>')+'</td>'+
+       '<td'+(e.rejects.length?' class="flag"':'')+'>'+
+         (e.rejects.length?e.rejects.map(r=>r.kind+": "+r.why).join('<br>'):'—')+'</td></tr>'; });
+  h+='</tbody></table>';
+
+  const over=S.markers.filter(m=>!m.item&&m.near);
+  if(over.length||S.strays) h+='<div class="step"><h3>Marker placement</h3><div class="warnbar">'+
+    (S.strays?S.strays+' marker'+(S.strays>1?'s':'')+' placed with no feature within reach. Stray markers in a scene photograph are a gift to the defence.<br>':'')+
+    (over.length?over.length+' marker'+(over.length>1?'s':'')+' assigned to features that are not evidence of what happened here. Not penalised — but every number you issue is a number you will be asked to justify.':'')+
+    '</div></div>';
+
+  if(S.contam.length) h+='<div class="step"><h3>Contamination log</h3><div class="warnbar">'+
+    S.contam.map(c=>c.t+" — walked through "+c.zone+" during the "+c.phase).join('<br>')+'</div></div>';
+
+  const photos=[];
+  CASE.overalls.forEach(o=>{ if(S.ov[o.id].img) photos.push({l:o.id,s:"overall",d:S.ov[o.id]}); });
+  EVIDENCE_KEYS.forEach(k=>{ for(const s in S.ev[k].shots)
+    photos.push({l:CASE.items[k].id+(S.ev[k].marker!==null?" #"+S.ev[k].marker:""),s,d:S.ev[k].shots[s]}); });
+  if(photos.length){ h+='<div class="step"><h3>Scene photographs ('+photos.length+')</h3><div class="thumbs">';
+    photos.forEach(p=>{ h+='<figure><img src="'+p.d.img+'"><figcaption>'+p.l+' · '+p.s+' · '+p.d.t+'</figcaption></figure>'; });
+    h+='</div></div>'; }
+  if(S.flags.length) h+='<div class="step"><h3>Flags raised during processing</h3><div class="warnbar">'+
+    S.flags.join('<br>')+'</div></div>';
+
+  $("#repBody").innerHTML=h;
+  $("#repSub").textContent=S.tech+(S.partner?" with "+S.partner:"")+" · scene released "+stamp();
+  openScrim("#scrimReport");
+}
+function csv(){
+  const rows=[["Case","Technician","Partner","Ref","Marker","Description","Frames accepted","Frames rejected","Rejection reasons","Time"]];
+  CASE.overalls.forEach(o=>{ const r=S.ov[o.id];
+    rows.push(["26-0417",S.tech,S.partner,o.id,"",o.name,r.img?"overall":"none",r.rejects.length,
+      r.rejects.map(x=>x.why).join(" | "),r.t||""]); });
+  EVIDENCE_KEYS.forEach(k=>{ const it=CASE.items[k], e=S.ev[k];
+    rows.push(["26-0417",S.tech,S.partner,it.id, e.marker!==null?e.marker:"none", it.name,
+      Object.keys(e.shots).join(" / ")||"none", e.rejects.length,
+      e.rejects.map(r=>r.kind+": "+r.why).join(" | "),
+      (e.shots.close&&e.shots.close.t)||(e.shots.mid&&e.shots.mid.t)||""]); });
+  rows.push([]);
+  rows.push(["Contamination events",S.contam.length].concat(S.contam.map(c=>c.t+" "+c.zone)));
+  rows.push(["Stray markers",S.strays]);
+  rows.push(["Score","Securing "+S.score.secure+"/"+(CASE.securing.length*5),
+    "Overalls "+S.score.ov+"/"+(CASE.overalls.length*5),
+    "Marking "+S.score.mark+"/"+(EVIDENCE_KEYS.length*5),
+    "Photographs "+S.score.photo+"/"+(EVIDENCE_KEYS.length*10),
+    "Findings "+S.score.find+"/15","Interpretation "+S.score.conc+"/15",
+    "Contamination "+S.score.contam,"Total "+S.score.total+"/"+S.score.max,"Percent "+S.score.pct+"%"]);
+  return rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
+}
+
+/* ── wiring ── */
+$("#btnStart").addEventListener("click",()=>{
+  closeScrim("#scrimBrief"); S.phase="secure"; drawSecure(); openScrim("#scrimSecure"); updatePhaseUI(); renderRail();
+});
+$("#briefClose").addEventListener("click",()=>{ if(S.phase!=="brief") closeScrim("#scrimBrief"); });
+$("#btnBrief").addEventListener("click",()=>openScrim("#scrimBrief"));
+$("#secureSubmit").addEventListener("click",()=>{
+  let anyNew=false;
+  CASE.securing.forEach((q,i)=>{
+    if(S.secureTries[i].some(t=>t.ok)) return;
+    const sel=$("#secureBody").querySelector('input[name="q'+i+'"]:checked');
+    if(!sel) return;
+    const j=+sel.value; S.secureTries[i].push({i:j, ok:!!q.opts[j].ok, t:stamp()}); anyNew=true;
+    if(!q.opts[j].ok) S.flags.push("Securing decision "+(i+1)+": rejected answer");
+  });
+  S.tech=($("#techName")&&$("#techName").value||"Unnamed technician").trim();
+  S.partner=($("#techPartner")&&$("#techPartner").value||"").trim();
+  const allOk=CASE.securing.every((q,i)=>S.secureTries[i].some(t=>t.ok));
+  if(!allOk){ if(!anyNew){ alert("Answer the remaining decisions."); return; } drawSecure(); return; }
+  closeScrim("#scrimSecure");
+  S.phase="walkthrough"; lane.visible=true; updatePhaseUI(); renderRail();
+  setPrompt("Approach path established along the north wall. Walk through and note every feature — touch nothing.");
+  setTimeout(()=>{ const p=document.getElementById("prompt");
+    if(!p.classList.contains("alarm")) setPrompt(""); },6500);
+});
+$("#itemClose").addEventListener("click",()=>closeScrim("#scrimItem"));
+$("#itemDone").addEventListener("click",()=>closeScrim("#scrimItem"));
+$("#ovClose").addEventListener("click",()=>closeScrim("#scrimOveralls"));
+$("#ovDone").addEventListener("click",()=>closeScrim("#scrimOveralls"));
+$("#btnOveralls").addEventListener("click",()=>{ drawOveralls(); openScrim("#scrimOveralls"); });
+$("#btnLight").addEventListener("click",toggleOblique);
+$("#btnMarker").addEventListener("click",toggleMarkerMode);
+$("#btnRail").addEventListener("click",()=>$("#rail").classList.toggle("open"));
+$("#btnQuality").addEventListener("click",()=>{
+  S.quality=S.quality==="high"?"low":"high";
+  const hi=S.quality==="high";
+  renderer.shadowMap.enabled=hi; ceilLight.castShadow=hi;
+  renderer.setPixelRatio(hi?Math.min(devicePixelRatio,1.5):1);
+  scene.traverse(o=>{ if(o.isMesh&&o.material) o.material.needsUpdate=true; });
+  $("#btnQuality").textContent="Quality: "+(hi?"High":"Low");
+});
+$("#btnAdvance").addEventListener("click",()=>{
+  if(S.phase==="walkthrough"){ S.phase="document"; updatePhaseUI(); renderRail();
+    drawOveralls(); openScrim("#scrimOveralls"); }
+  else openConclusion();
+});
+$("#concBack").addEventListener("click",()=>closeScrim("#scrimConc"));
+$("#concSubmit").addEventListener("click",()=>{
+  const conc=$("#concBody").querySelector('input[name="cc"]:checked');
+  const picks=$("#concBody").querySelectorAll('input[name="ff"]:checked');
+  if(!conc||picks.length!==3){ alert("Choose one interpretation and exactly three supporting findings."); return; }
+  closeScrim("#scrimConc"); S.phase="done"; buildReport();
+});
+$("#repCopy").addEventListener("click",()=>{
+  navigator.clipboard.writeText(csv()).then(
+    ()=>{ $("#repCopy").textContent="Copied"; setTimeout(()=>$("#repCopy").textContent="Copy log as text",1600); },
+    ()=>{ $("#repCopy").textContent="Copy blocked by browser"; });
+});
+(async function(){
+  const dl=await (window.claude&&claude.use?claude.use("downloads"):null);
+  const btn=$("#repCsv");
+  if(!dl){ btn.style.display="none"; return; }
+  btn.addEventListener("click",async()=>{
+    try{ await dl.save({filename:"26-0417-scene-documentation.csv",data:csv()}); btn.textContent="Saved"; }
+    catch(err){ btn.textContent=err&&err.code==="declined"?"Download cancelled":"Download unavailable — use Copy"; }
+  });
+})();
+addEventListener("resize",()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+/* ══════════════════════════════════════════════════════════
+   LOOP
+   ══════════════════════════════════════════════════════════ */
+$("#caseid").textContent="26-0417 · "+BUILD;
+const clockEl=$("#clock");
+let last=performance.now();
+function tick(now){
+  const dt=Math.min(.05,(now-last)/1000); last=now;
+  if(S.phase!=="brief"&&S.phase!=="secure"&&S.phase!=="done"&&!modalOpen()){
+    const sp=(keys.ShiftLeft?2.7:1.6)*dt;
+    let fx=0,fz=0;
+    if(keys.KeyW)fz-=1; if(keys.KeyS)fz+=1; if(keys.KeyA)fx-=1; if(keys.KeyD)fx+=1;
+    if(fx||fz){ const l=Math.hypot(fx,fz); fx/=l; fz/=l;
+      const sn=Math.sin(yaw),cs=Math.cos(yaw);
+      const [cx,cz]=collide(player.position.x+(fx*cs-fz*sn)*sp, player.position.z+(fx*sn+fz*cs)*sp);
+      player.position.x=cx; player.position.z=cz; checkZones(); }
+  }
+  camera.rotation.set(pitch,yaw,0,"YXZ");
+  updateAim();
+  clockEl.textContent=stamp();
+  renderer.render(scene,camera);
+  requestAnimationFrame(tick);
+}
+renderRail(); updatePhaseUI();
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
